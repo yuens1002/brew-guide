@@ -67,6 +67,7 @@ function buildMcpServer(): McpServer {
         brew_time_s: z.number().describe('Brew time in seconds'),
         rating: z.number().int().min(1).max(5).describe('Rating from 1 to 5'),
         notes: z.string().optional().describe('Tasting notes or observations'),
+        technique: z.object({}).passthrough().optional().describe('Structured technique object (bypasses LLM extraction when provided)'),
         source_url: z.string().url().optional().describe('Source URL for this brew data'),
         field_confidence: z.string().optional().describe('JSON-serialized per-field confidence scores'),
       },
@@ -91,6 +92,7 @@ function buildMcpServer(): McpServer {
         brew_time_s: params.brew_time_s,
         rating: params.rating,
         notes: params.notes,
+        technique: params.technique as Brew['technique'],
         source_url: params.source_url,
         field_confidence: fieldConfidence,
       } as Omit<Brew, 'id' | 'created_at'>);
