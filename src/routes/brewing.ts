@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { getBrewingMethods, getBrews, getBrewById, addBrew, updateBrewTechnique, getOrigins, getBrewLinks, recordVote, getRecommendation } from '../lib/db.js';
+import { getBrewingMethods, getBrews, getBrewById, addBrew, updateBrewTechnique, getTastingNotes, getOrigins, getBrewLinks, recordVote, getRecommendation } from '../lib/db.js';
 import { computeBestBrew, tryLinkBrew, resolveOrigin } from '../lib/recommend.js';
 import { extractTechnique } from '../lib/llm.js';
 import type { BrewingMethod, Brew, BrewTechnique } from '../types.js';
@@ -12,6 +12,12 @@ const app = new Hono();
 app.get('/origins', async (c) => {
   const origins = await getOrigins();
   return c.json(origins);
+});
+
+// GET /tasting-notes
+app.get('/tasting-notes', async (c) => {
+  const notes = await getTastingNotes();
+  return c.json(notes);
 });
 
 // GET /brewing-methods

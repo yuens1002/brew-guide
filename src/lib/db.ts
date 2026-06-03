@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import type {
   BrewingMethod, Brew, BrewWithMethod, BrewSource,
-  Origin, RecommendationRecord, BrewRecommendationLink, BrewTechnique, VoteResponse,
+  Origin, RecommendationRecord, BrewRecommendationLink, BrewTechnique, TastingNote, VoteResponse,
 } from '../types.js';
 
 const prisma = new PrismaClient();
@@ -76,6 +76,7 @@ export async function getBrews(filters?: {
     source: (r.source as BrewSource) || 'user_submitted',
     source_url: r.source_url ?? undefined,
     field_confidence: r.field_confidence ?? undefined,
+    technique: r.technique as BrewTechnique | null,
   }));
 
   return { count, brews };
@@ -100,6 +101,7 @@ export async function getBrewById(id: number): Promise<Brew | null> {
     source: (r.source as BrewSource) || 'user_submitted',
     source_url: r.source_url ?? undefined,
     field_confidence: r.field_confidence ?? undefined,
+    technique: r.technique as BrewTechnique | null,
   };
 }
 
@@ -121,6 +123,7 @@ export async function addBrew(
       source: brew.source || 'user_submitted',
       source_url: brew.source_url ?? null,
       field_confidence: brew.field_confidence ?? null,
+      technique: brew.technique != null ? (brew.technique as Prisma.InputJsonValue) : Prisma.JsonNull,
     },
   });
   return {
@@ -139,7 +142,31 @@ export async function addBrew(
     source: (r.source as BrewSource) || 'user_submitted',
     source_url: r.source_url ?? undefined,
     field_confidence: r.field_confidence ?? undefined,
+    technique: r.technique as BrewTechnique | null,
   };
+}
+
+export async function getTastingNotes(): Promise<TastingNote[]> {
+  const rows = await prisma.brew.findMany({
+    where: { notes: { not: null } },
+    select: { notes: true },
+  });
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    if (!row.notes) continue;
+    for (const raw of row.notes.split(',')) {
+      const note = raw.trim().toLowerCase();
+      if (note) counts[note] = (counts[note] ?? 0) + 1;
+    }
+  }
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 50)
+    .map(([note, count]) => ({ note, count }));
+}
+
+export async function updateBrewTechnique(id: number, technique: BrewTechnique): Promise<void> {
+  await prisma.brew.update({ where: { id }, data: { technique: technique as Prisma.InputJsonValue } });
 }
 
 // ── Recommendations ─────────────────────────────────────

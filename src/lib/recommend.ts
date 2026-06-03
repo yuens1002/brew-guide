@@ -4,7 +4,7 @@ import {
 } from './db.js';
 import type {
   BrewWithMethod, Brew,
-  Recommendation, RecommendationParams, SourceRef,
+  Recommendation, RecommendationParams, SourceRef, TastingNote,
 } from '../types.js';
 
 // ── Similarity Scoring ──────────────────────────────────
@@ -111,6 +111,23 @@ function modeField(
     if (s > bestScore) { bestScore = s; best = val; }
   }
   return best;
+}
+
+// ── Tasting Note Aggregation ────────────────────────────
+
+function aggregateTastingNotes(brews: Array<{ brew: BrewWithMethod }>, limit: number): TastingNote[] {
+  const counts: Record<string, number> = {};
+  for (const { brew } of brews) {
+    if (!brew.notes) continue;
+    for (const raw of brew.notes.split(',')) {
+      const note = raw.trim().toLowerCase();
+      if (note) counts[note] = (counts[note] ?? 0) + 1;
+    }
+  }
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([note, count]) => ({ note, count }));
 }
 
 // ── Main Compute ────────────────────────────────────────
@@ -230,6 +247,8 @@ export async function computeBestBrew(
     sources: JSON.stringify(sources),
   });
 
+  const tasting_notes = aggregateTastingNotes(topN, 8);
+
   return {
     id: rec.id,
     brewing_method: method.name,
@@ -247,6 +266,7 @@ export async function computeBestBrew(
     sources,
     data_points_used: topN.length,
     technique: method.technique ?? null,
+    tasting_notes,
     thumbs_up: rec.thumbs_up,
     thumbs_down: rec.thumbs_down,
   };

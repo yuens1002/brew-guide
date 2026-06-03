@@ -54,6 +54,7 @@ export interface Brew {
   source: BrewSource;
   source_url?: string;
   field_confidence?: string; // JSON-serialized FieldConfidence
+  technique?: BrewTechnique | null;
 }
 
 /** Parameters submitted to POST /recommend */
@@ -85,6 +86,12 @@ export interface SourceRef {
   relevance: number; // 0-1 match score
 }
 
+/** Tasting note with community count */
+export interface TastingNote {
+  note: string;
+  count: number;
+}
+
 /** AI recommendation (POST /recommend response) */
 export interface Recommendation {
   id: number;
@@ -95,6 +102,7 @@ export interface Recommendation {
   sources: SourceRef[];
   data_points_used: number;
   technique?: BrewTechnique | null;
+  tasting_notes: TastingNote[];
   thumbs_up?: number;
   thumbs_down?: number;
 }
@@ -157,6 +165,7 @@ export interface BrewWithMethod {
   source: BrewSource;
   source_url?: string;
   field_confidence?: string; // JSON-serialized FieldConfidence; used by computeBestBrew scoring
+  technique?: BrewTechnique | null;
 }
 
 // ── Technique Types (Phase 6 — method-scoped) ──────────────
