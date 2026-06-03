@@ -919,6 +919,169 @@
 
     a { color: var(--amber); }
     a:hover { color: var(--gold); }
+
+    /* ── Technique fields (Face B) ──────────────────────────── */
+    .technique-fields-section { margin-bottom: 20px; }
+    .technique-fields-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin-bottom: 14px;
+    }
+    .pour-stage-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.5fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .pour-stage-remove {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 6px 10px;
+      line-height: 1;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .pour-stage-remove:hover { color: #e05252; border-color: rgba(224,82,82,0.4); }
+    .add-stage-btn {
+      background: none;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      color: var(--amber);
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      padding: 8px 14px;
+      width: 100%;
+      text-align: center;
+      transition: border-color 0.2s, color 0.2s;
+      margin-top: 4px;
+    }
+    .add-stage-btn:hover { border-color: var(--amber); color: var(--gold); }
+    .toggle-group {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .toggle-opt {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 14px;
+      padding: 11px 14px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .toggle-opt.active { background: var(--amber); color: #110900; font-weight: 600; }
+    .checkbox-field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0 10px;
+    }
+    .checkbox-field input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--amber);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .checkbox-field label { margin: 0; font-size: 14px; color: var(--cream); font-weight: 400; cursor: pointer; }
+
+    /* ── Chip input (tasting notes) ─────────────────────────── */
+    .chip-input-wrap {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-input);
+      padding: 7px 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      cursor: text;
+      transition: border-color 0.2s;
+      min-height: 46px;
+      align-items: center;
+    }
+    .chip-input-wrap:focus-within { border-color: var(--amber); }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(200,134,10,0.18);
+      border: 1px solid rgba(200,134,10,0.4);
+      border-radius: 16px;
+      padding: 3px 10px;
+      font-size: 13px;
+      color: var(--gold);
+      white-space: nowrap;
+    }
+    .chip-remove {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 15px;
+      line-height: 1;
+      padding: 0;
+      margin-left: 2px;
+      display: flex;
+      align-items: center;
+    }
+    .chip-remove:hover { color: #e05252; }
+    .chip-text-input {
+      background: none !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
+      color: var(--cream);
+      font-family: inherit;
+      font-size: 15px;
+      padding: 3px 4px;
+      min-width: 140px;
+      width: auto;
+      flex: 1;
+    }
+    .chip-dropdown {
+      position: absolute;
+      top: calc(100% + 2px);
+      left: 0;
+      right: 0;
+      background: var(--bg-input);
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius);
+      max-height: 180px;
+      overflow-y: auto;
+      z-index: 100;
+    }
+
+    /* ── Tasting notes on rec card ──────────────────────────── */
+    .res-tasting-notes {
+      font-size: 13px;
+      color: var(--muted);
+      font-style: italic;
+      margin-top: 4px;
+    }
+
+    /* ── Brew success state ─────────────────────────────────── */
+    .brew-success-msg {
+      margin-top: 16px;
+      padding: 14px 16px;
+      background: rgba(76,175,112,0.08);
+      border: 1px solid rgba(76,175,112,0.2);
+      border-radius: var(--radius);
+      color: #4caf70;
+      font-size: 14px;
+    }
+    .brew-success-msg em { color: var(--cream); font-style: italic; }
   </style>
 </head>
 <body>
@@ -1003,6 +1166,7 @@
                 <div>
                   <div class="result-method" id="resMethod"></div>
                   <div class="result-origin" id="resOrigin"></div>
+                  <div class="res-tasting-notes" id="resTastingNotes" style="display:none;"></div>
                 </div>
                 <div class="confidence-badge" id="resBadge">
                   <div class="confidence-dot"></div>
@@ -1140,9 +1304,22 @@
               </div>
             </div>
 
+            <!-- Technique section — populated when method is selected -->
+            <div id="techniqueFieldsSection" class="technique-fields-section" style="display:none;">
+              <div class="technique-fields-title">Technique <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:11px;">(optional — all fields)</span></div>
+              <div id="techniqueFieldsInner"></div>
+            </div>
+
+            <!-- Tasting notes chip input -->
             <div class="field">
-              <label for="notesB">Technique notes</label>
-              <textarea id="notesB" rows="4" placeholder="Describe your brew technique — bloom timing, pour stages, agitation, drawdown, taste notes…"></textarea>
+              <label>Tasting notes</label>
+              <div class="combobox-wrap">
+                <div class="chip-input-wrap" id="chipInputWrap" onclick="document.getElementById('tastingNoteInput').focus()">
+                  <span id="chipsContainer"></span>
+                  <input type="text" id="tastingNoteInput" class="chip-text-input" placeholder="How did it taste? Fruity, floral, bitter…" autocomplete="off">
+                </div>
+                <div id="tastingNoteDropdown" class="chip-dropdown hidden"></div>
+              </div>
             </div>
 
             <button class="btn" id="submitBrewBtn" onclick="submitBrew()">Submit brew</button>
@@ -1303,6 +1480,11 @@
         let _selectedRating = 0;
             let _voteState = null; // null, 'up', or 'down'
         let _recId = null;    // current recommendation id for vote API
+        window._tastingChips = [];
+        window._tastingNotes = [];
+        window._pourStages = [];
+        window._pourStageCount = 0;
+        const FALLBACK_TASTING_NOTES = ['bright','floral','fruity','chocolatey','nutty','caramel','earthy','citrus','berry','acidic','balanced','smooth','bitter'];
 
         // Parse origin text for variety: "Papua New Guinea (bourbon)" → {origin, variety}
         function parseOriginVariety(text) {
@@ -1327,6 +1509,266 @@
           }
           return display;
         }
+
+    // ── Technique fields per method ─────────────────────────────
+    function renderTechniqueFields(methodId) {
+      const section = document.getElementById('techniqueFieldsSection');
+      const inner   = document.getElementById('techniqueFieldsInner');
+      window._pourStages = [];
+      window._pourStageCount = 0;
+      if (!methodId || !window._methodMap[methodId]) { section.style.display = 'none'; inner.innerHTML = ''; return; }
+      const name = window._methodMap[methodId].name;
+      inner.innerHTML = buildTechniqueFieldsHTML(name);
+      section.style.display = '';
+      if (name === 'AeroPress') {
+        inner.querySelectorAll('.toggle-opt').forEach(btn => {
+          btn.addEventListener('click', () => {
+            inner.querySelectorAll('.toggle-opt').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('tq_inverted').value = btn.dataset.value;
+          });
+        });
+      }
+      updateSliderHeight();
+    }
+
+    function buildTechniqueFieldsHTML(name) {
+      switch (name) {
+        case 'Pour Over': return pourOverHTML(false);
+        case 'Chemex':    return pourOverHTML(true);
+        case 'Espresso':  return `
+          <div class="form-row">
+            <div class="field"><label>Pre-infusion (s)</label><input type="number" id="tq_preinfusion_s" placeholder="e.g. 5" min="0"></div>
+            <div class="field"><label>Yield ratio (1:X)</label><input type="number" id="tq_yield_ratio" placeholder="e.g. 2" min="1" step="0.1"></div>
+          </div>
+          <div class="form-row">
+            <div class="field"><label>Shot time (s)</label><input type="number" id="tq_shot_time_s" placeholder="e.g. 28" min="0"></div>
+            <div class="field"><label>Pressure (bar)</label><input type="number" id="tq_pressure_bar" placeholder="e.g. 9" min="0" step="0.5"></div>
+          </div>
+          <div class="field"><label>Filter type</label><select id="tq_filter_type_espresso"><option value="">Select</option><option value="paper">Paper</option><option value="metal">Metal</option><option value="cloth">Cloth</option></select></div>`;
+        case 'French Press': return `
+          <div class="form-row">
+            <div class="field"><label>Steep time (s)</label><input type="number" id="tq_steep_time_s_fp" placeholder="e.g. 240" min="0"></div>
+            <div class="field"><label>Plunge speed</label><select id="tq_plunge_speed"><option value="">Select</option><option value="slow">Slow</option><option value="medium">Medium</option></select></div>
+          </div>
+          <div class="form-row">
+            <div class="field"><label>Stir at (s)</label><input type="number" id="tq_stir_at_s" placeholder="e.g. 120" min="0"></div>
+            <div class="checkbox-field" style="padding-top:20px;"><input type="checkbox" id="tq_pre_wet"><label for="tq_pre_wet">Pre-wet grounds</label></div>
+          </div>`;
+        case 'AeroPress': return `
+          <div class="field"><label>Position</label>
+            <div class="toggle-group">
+              <button type="button" class="toggle-opt active" data-value="false">Standard</button>
+              <button type="button" class="toggle-opt" data-value="true">Inverted</button>
+            </div>
+            <input type="hidden" id="tq_inverted" value="false">
+          </div>
+          <div class="form-row">
+            <div class="field"><label>Steep time (s)</label><input type="number" id="tq_steep_time_s_ap" placeholder="e.g. 90" min="0"></div>
+            <div class="field"><label>Stir count</label><input type="number" id="tq_stir_count" placeholder="e.g. 10" min="0"></div>
+          </div>
+          <div class="field"><label>Filter type</label><select id="tq_filter_type_aeropress"><option value="">Select</option><option value="paper">Paper</option><option value="metal">Metal</option></select></div>`;
+        case 'Cold Brew': return `
+          <div class="form-row">
+            <div class="field"><label>Steep time (hrs)</label><input type="number" id="tq_steep_time_h" placeholder="e.g. 12" min="1"></div>
+            <div class="field"><label>Temperature</label><select id="tq_steep_temp"><option value="">Select</option><option value="room">Room temperature</option><option value="fridge">Fridge</option></select></div>
+          </div>
+          <div class="field"><label>Dilution ratio (1:X)</label><input type="number" id="tq_dilution_ratio" placeholder="e.g. 1" min="1" step="0.5"></div>`;
+        case 'Moka Pot': return `
+          <div class="form-row">
+            <div class="field"><label>Heat level</label><select id="tq_heat_level_moka"><option value="">Select</option><option value="low">Low</option><option value="medium">Medium</option></select></div>
+            <div class="field"><label>Tamp</label><select id="tq_tamp"><option value="">Select</option><option value="none">None</option><option value="light">Light</option></select></div>
+          </div>
+          <div class="checkbox-field"><input type="checkbox" id="tq_preheat_water"><label for="tq_preheat_water">Pre-heat water in kettle</label></div>`;
+        case 'Siphon': return `
+          <div class="form-row">
+            <div class="field"><label>Heat source</label><select id="tq_heat_source"><option value="">Select</option><option value="butane">Butane</option><option value="halogen">Halogen</option><option value="electric">Electric</option></select></div>
+            <div class="field"><label>Drawdown time (s)</label><input type="number" id="tq_drawdown_time_s" placeholder="e.g. 45" min="0"></div>
+          </div>
+          <div class="field"><label>Stir pattern</label><input type="text" id="tq_stir_pattern" placeholder="e.g. figure-eight"></div>`;
+        case 'Turkish': return `
+          <div class="form-row">
+            <div class="field"><label>Heat level</label><select id="tq_heat_level_turkish"><option value="">Select</option><option value="low">Low</option><option value="medium">Medium</option></select></div>
+            <div class="field"><label>Foam technique</label><select id="tq_foam_technique"><option value="">Select</option><option value="traditional">Traditional</option><option value="none">None</option></select></div>
+          </div>
+          <div class="checkbox-field"><input type="checkbox" id="tq_serve_with_grounds"><label for="tq_serve_with_grounds">Serve with grounds</label></div>`;
+        default: return '';
+      }
+    }
+
+    function pourOverHTML(isChemex) {
+      return `
+        ${isChemex ? `<div class="checkbox-field"><input type="checkbox" id="tq_filter_rinse"><label for="tq_filter_rinse">Rinse filter before brewing</label></div>` : ''}
+        <div class="form-row">
+          <div class="field"><label>Bloom ratio (× dose)</label><input type="number" id="tq_bloom_weight_ratio" placeholder="e.g. 2" min="1" step="0.5"></div>
+          <div class="field"><label>Bloom duration (s)</label><input type="number" id="tq_bloom_duration_s" placeholder="e.g. 30" min="0"></div>
+        </div>
+        <div class="field">
+          <label>Pour stages</label>
+          <div id="tq_pour_stages_container"></div>
+          <button type="button" class="add-stage-btn" onclick="addPourStage()">+ Add stage</button>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>Agitation</label><select id="tq_agitation"><option value="">None</option><option value="swirl">Swirl</option><option value="stir">Stir</option></select></div>
+          <div class="field"><label>Drawdown target (s)</label><input type="number" id="tq_drawdown_target_s" placeholder="e.g. 210" min="0"></div>
+        </div>`;
+    }
+
+    function addPourStage() {
+      const n = window._pourStageCount++;
+      window._pourStages.push(n);
+      renderPourStages();
+      updateSliderHeight();
+    }
+
+    function removePourStage(n) {
+      window._pourStages = window._pourStages.filter(i => i !== n);
+      renderPourStages();
+      updateSliderHeight();
+    }
+
+    function renderPourStages() {
+      const container = document.getElementById('tq_pour_stages_container');
+      if (!container) return;
+      container.innerHTML = window._pourStages.map(n => `
+        <div class="pour-stage-row" id="ps_row_${n}">
+          <input type="number" id="ps_at_${n}" placeholder="At (s)" min="0" style="width:100%;">
+          <input type="number" id="ps_vol_${n}" placeholder="Vol (ml)" min="0" style="width:100%;">
+          <input type="text" id="ps_note_${n}" placeholder="Note" style="width:100%;">
+          <button type="button" class="pour-stage-remove" onclick="removePourStage(${n})">−</button>
+        </div>`).join('');
+    }
+
+    function buildTechniqueObject() {
+      const methodId = document.getElementById('methodB').value;
+      if (!methodId || !window._methodMap[methodId]) return undefined;
+      const name = window._methodMap[methodId].name;
+      const obj = {};
+      const numVal = id => { const el = document.getElementById(id); return el && el.value !== '' ? parseFloat(el.value) : undefined; };
+      const strVal = id => { const el = document.getElementById(id); return el && el.value ? el.value : undefined; };
+      const boolCheck = id => { const el = document.getElementById(id); return el ? el.checked : false; };
+
+      if (name === 'Pour Over' || name === 'Chemex') {
+        const bwr = numVal('tq_bloom_weight_ratio'), bds = numVal('tq_bloom_duration_s');
+        const agi = strVal('tq_agitation'), dts = numVal('tq_drawdown_target_s');
+        const stages = window._pourStages.map(n => {
+          const at_s = numVal(`ps_at_${n}`), volume_ml = numVal(`ps_vol_${n}`), note = strVal(`ps_note_${n}`);
+          return (at_s != null && volume_ml != null) ? { at_s, volume_ml, ...(note ? { note } : {}) } : null;
+        }).filter(Boolean);
+        if (bwr != null) obj.bloom_weight_ratio = bwr;
+        if (bds != null) obj.bloom_duration_s = bds;
+        if (stages.length) obj.pour_stages = stages;
+        if (agi) obj.agitation = agi;
+        if (dts != null) obj.drawdown_target_s = dts;
+        if (name === 'Chemex') obj.filter_rinse = boolCheck('tq_filter_rinse');
+      } else if (name === 'Espresso') {
+        const pi = numVal('tq_preinfusion_s'), yr = numVal('tq_yield_ratio');
+        const st = numVal('tq_shot_time_s'), pb = numVal('tq_pressure_bar'), ft = strVal('tq_filter_type_espresso');
+        if (pi != null) obj.preinfusion_s = pi;
+        if (yr != null) obj.yield_ratio = yr;
+        if (st != null) obj.shot_time_s = st;
+        if (pb != null) obj.pressure_bar = pb;
+        if (ft) obj.filter_type = ft;
+      } else if (name === 'French Press') {
+        const sts = numVal('tq_steep_time_s_fp'), ps = strVal('tq_plunge_speed');
+        const sas = numVal('tq_stir_at_s'), pw = boolCheck('tq_pre_wet');
+        if (sts != null) obj.steep_time_s = sts;
+        if (ps) obj.plunge_speed = ps;
+        if (sas != null) obj.stir_at_s = sas;
+        if (pw) obj.pre_wet = pw;
+      } else if (name === 'AeroPress') {
+        const invEl = document.getElementById('tq_inverted');
+        obj.inverted = invEl ? invEl.value === 'true' : false;
+        const sts = numVal('tq_steep_time_s_ap'), sc = numVal('tq_stir_count'), ft = strVal('tq_filter_type_aeropress');
+        if (sts != null) obj.steep_time_s = sts;
+        if (sc != null) obj.stir_count = sc;
+        if (ft) obj.filter_type = ft;
+      } else if (name === 'Cold Brew') {
+        const sth = numVal('tq_steep_time_h'), st = strVal('tq_steep_temp'), dr = numVal('tq_dilution_ratio');
+        if (sth != null) obj.steep_time_h = sth;
+        if (st) obj.steep_temp = st;
+        if (dr != null) obj.dilution_ratio = dr;
+      } else if (name === 'Moka Pot') {
+        const hl = strVal('tq_heat_level_moka'), ta = strVal('tq_tamp'), ph = boolCheck('tq_preheat_water');
+        if (hl) obj.heat_level = hl;
+        if (ta) obj.tamp = ta;
+        obj.preheat_water = ph;
+      } else if (name === 'Siphon') {
+        const hs = strVal('tq_heat_source'), sp = strVal('tq_stir_pattern'), dt = numVal('tq_drawdown_time_s');
+        if (hs) obj.heat_source = hs;
+        if (sp) obj.stir_pattern = sp;
+        if (dt != null) obj.drawdown_time_s = dt;
+      } else if (name === 'Turkish') {
+        const hl = strVal('tq_heat_level_turkish'), ft = strVal('tq_foam_technique'), sg = boolCheck('tq_serve_with_grounds');
+        if (hl) obj.heat_level = hl;
+        if (ft) obj.foam_technique = ft;
+        if (sg) obj.serve_with_grounds = sg;
+      }
+
+      return Object.keys(obj).length > 0 ? obj : undefined;
+    }
+
+    // ── Chip input (tasting notes) ──────────────────────────────
+    function renderChips() {
+      const container = document.getElementById('chipsContainer');
+      if (!container) return;
+      container.innerHTML = window._tastingChips.map((chip, i) =>
+        `<span class="chip">${escHtml(chip)}<button type="button" class="chip-remove" onclick="removeChip(${i})" aria-label="Remove ${escHtml(chip)}">×</button></span>`
+      ).join('');
+    }
+
+    function addChip(note) {
+      const n = note.trim().toLowerCase();
+      if (!n || window._tastingChips.includes(n)) return;
+      window._tastingChips.push(n);
+      renderChips();
+      updateSliderHeight();
+    }
+
+    function removeChip(idx) {
+      window._tastingChips.splice(idx, 1);
+      renderChips();
+      updateSliderHeight();
+    }
+
+    function initChipInput() {
+      const input    = document.getElementById('tastingNoteInput');
+      const dropdown = document.getElementById('tastingNoteDropdown');
+      if (!input || !dropdown) return;
+
+      function showSuggestions(filter) {
+        const lc = filter.toLowerCase();
+        const pool = window._tastingNotes.length > 0 ? window._tastingNotes : FALLBACK_TASTING_NOTES;
+        const hits = pool.filter(n => n.includes(lc) && !window._tastingChips.includes(n)).slice(0, 10);
+        dropdown.innerHTML = '';
+        hits.forEach(n => {
+          const item = document.createElement('div');
+          item.className = 'combobox-item';
+          item.textContent = n;
+          item.addEventListener('mousedown', e => {
+            e.preventDefault();
+            addChip(n);
+            input.value = '';
+            dropdown.classList.add('hidden');
+          });
+          dropdown.appendChild(item);
+        });
+        hits.length > 0 ? dropdown.classList.remove('hidden') : dropdown.classList.add('hidden');
+      }
+
+      input.addEventListener('input',  () => { input.value.trim() ? showSuggestions(input.value.trim()) : dropdown.classList.add('hidden'); });
+      input.addEventListener('focus',  () => { if (input.value.trim()) showSuggestions(input.value.trim()); });
+      input.addEventListener('blur',   () => setTimeout(() => dropdown.classList.add('hidden'), 150));
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const v = input.value.trim();
+          if (v) { addChip(v); input.value = ''; dropdown.classList.add('hidden'); }
+        } else if (e.key === 'Backspace' && !input.value && window._tastingChips.length > 0) {
+          removeChip(window._tastingChips.length - 1);
+        }
+      });
+    }
 
     // ── Combobox factory ────────────────────────────────────────
     function initCombobox(inputId, dropdownId) {
@@ -1439,6 +1881,19 @@
 
       window._methodMap = methodMap;
 
+      // Load tasting notes for chip combobox suggestions
+      fetch(`${API}/tasting-notes`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { window._tastingNotes = Array.isArray(data) ? data.map(d => d.note) : FALLBACK_TASTING_NOTES; })
+        .catch(() => { window._tastingNotes = FALLBACK_TASTING_NOTES; });
+
+      initChipInput();
+
+      // Re-render technique fields when method B changes
+      document.getElementById('methodB').addEventListener('change', () => {
+        renderTechniqueFields(document.getElementById('methodB').value);
+      });
+
       // Init slider height after all content is in DOM
       updateSliderHeight();
     }
@@ -1476,6 +1931,7 @@
               originInputB.dataset.originName = document.getElementById('originInputA').dataset.originName || '';
               document.getElementById('roastB').value        = document.getElementById('roastA').value;
               document.getElementById('methodB').value       = document.getElementById('methodA').value;
+              renderTechniqueFields(document.getElementById('methodA').value);
 
               // Pre-fill brew parameters from last recommendation
               const rec = window._lastRec && window._lastRec.input;
@@ -1616,8 +2072,31 @@
           steps.push(`Remove heat — coffee draws down through the filter in ~${technique.drawdown_time_s}s.`);
         }
       }
+      // Turkish
+      else if (technique.heat_level !== undefined || technique.foam_technique !== undefined || technique.serve_with_grounds !== undefined) {
+        const heat = technique.heat_level || 'low';
+        steps.push(`Use ${heat} heat — bring the coffee to a gentle simmer, do not boil.`);
+        if (technique.foam_technique === 'traditional') {
+          steps.push('Bring to foam once or twice for traditional style. Spoon foam into cups first.');
+        } else {
+          steps.push('Watch for the foam to rise. Remove from heat just before it boils over.');
+        }
+        if (technique.serve_with_grounds) {
+          steps.push('Pour slowly, leaving grounds at the bottom. Serve immediately.');
+        } else {
+          steps.push('Let grounds settle for 30s before serving.');
+        }
+      }
 
       return steps.length > 0 ? steps : null;
+    }
+
+    // ── Generic fallback: use method description if no renderer matched ──
+    function renderTechniqueOrFallback(technique, methodName, methodDescription) {
+      const steps = renderTechnique(technique, methodName);
+      if (steps) return steps;
+      if (technique && methodDescription) return [methodDescription];
+      return null;
     }
 
     // ── Format helpers ──────────────────────────────────────────
@@ -1722,6 +2201,17 @@
       document.getElementById('resOrigin').textContent =
         `${input.origin || ''} · ${(input.roast_level || '').replace('-', '‑')} roast`;
 
+      // Tasting notes (community consensus)
+      const tnEl = document.getElementById('resTastingNotes');
+      if (data.tasting_notes && data.tasting_notes.length > 0) {
+        tnEl.innerHTML = data.tasting_notes.map(tn =>
+          tn.count > 1 ? `${escHtml(tn.note)}<sup>${tn.count}</sup>` : escHtml(tn.note)
+        ).join(', ');
+        tnEl.style.display = '';
+      } else {
+        tnEl.style.display = 'none';
+      }
+
       const badge = document.getElementById('resBadge');
       const conf  = (data.confidence || 'low').toLowerCase();
       badge.className = `confidence-badge ${conf}`;
@@ -1740,7 +2230,8 @@
       const techSection = document.getElementById('techniqueSection');
       const techList    = document.getElementById('techniqueSteps');
       techList.innerHTML = '';
-      const steps = renderTechnique(data.technique, methodName);
+      const methodDesc = (window._methodMap && Object.values(window._methodMap).find(m => m.name === methodName) || {}).description;
+      const steps = renderTechniqueOrFallback(data.technique, methodName, methodDesc);
       if (steps && steps.length > 0) {
         steps.forEach(s => {
           const li = document.createElement('li');
@@ -1782,7 +2273,6 @@
           const tempRaw  = document.getElementById('tempB').value;
           const ratioRaw = document.getElementById('ratioB').value;
           const timeRaw  = document.getElementById('timeB').value;
-          const notes    = document.getElementById('notesB').value.trim();
 
           if (!origin || !roast || !method) {
             showSubmitError('Origin, roast level, and brewing method are required.');
@@ -1818,12 +2308,19 @@
           };
           if (variety) body.variety = variety;
 
-          if (grind)                 body.grind_size   = grind;
-          if (tempRaw)               body.water_temp_c = parseInt(tempRaw);
-          if (ratioRaw)              body.ratio        = 1 / parseFloat(ratioRaw);
-          if (timeRaw)               body.brew_time_s  = parseInt(timeRaw);
-          if (_selectedRating > 0)   body.rating       = _selectedRating;
-          if (notes)                 body.notes        = notes;
+          if (grind)               body.grind_size   = grind;
+          if (tempRaw)             body.water_temp_c = parseInt(tempRaw);
+          if (ratioRaw)            body.ratio        = 1 / parseFloat(ratioRaw);
+          if (timeRaw)             body.brew_time_s  = parseInt(timeRaw);
+          if (_selectedRating > 0) body.rating       = _selectedRating;
+
+          // Tasting notes from chips
+          const notes = window._tastingChips.join(', ');
+          if (notes) body.notes = notes;
+
+          // Structured technique (bypasses LLM extraction)
+          const technique = buildTechniqueObject();
+          if (technique) body.technique = technique;
 
           try {
             const res = await fetch(`${API}/brews`, {
@@ -1838,7 +2335,13 @@
             }
 
             hide('submitLoadingState');
+            const loggedChips = [...window._tastingChips];
             clearBrewForm();
+            const successEl = document.getElementById('submitSuccessState');
+            successEl.innerHTML = loggedChips.length > 0
+              ? `<div class="brew-success-msg">Logged ✓ — <em>${escHtml(loggedChips.join(', '))}</em></div>`
+              : `<div class="brew-success-msg">Logged ✓</div>`;
+            show('submitSuccessState');
             launchConfetti();
 
           } catch (err) {
@@ -1909,9 +2412,18 @@
                   document.getElementById('tempB').value = '';
                   document.getElementById('ratioB').value = '';
                   document.getElementById('timeB').value = '';
-                  document.getElementById('notesB').value = '';
                   _selectedRating = 0;
                   paintStars(0);
+                  // Clear chips
+                  window._tastingChips = [];
+                  renderChips();
+                  const input = document.getElementById('tastingNoteInput');
+                  if (input) input.value = '';
+                  // Clear technique fields
+                  window._pourStages = [];
+                  window._pourStageCount = 0;
+                  document.getElementById('techniqueFieldsInner').innerHTML = '';
+                  document.getElementById('techniqueFieldsSection').style.display = 'none';
                 }
 
     // ── Helpers ─────────────────────────────────────────────────
