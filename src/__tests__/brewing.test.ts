@@ -6,6 +6,8 @@ vi.mock('../lib/db.js', () => ({
   getBrews: vi.fn(),
   getBrewById: vi.fn(),
   addBrew: vi.fn(),
+  updateBrewTechnique: vi.fn(),
+  getTastingNotes: vi.fn(),
   getOrigins: vi.fn(),
   createRecommendation: vi.fn(),
   findRecentRecommendation: vi.fn(),
@@ -16,12 +18,17 @@ vi.mock('../lib/db.js', () => ({
   recordVote: vi.fn(),
 }));
 
+vi.mock('../lib/llm.js', () => ({
+  extractTechnique: vi.fn().mockResolvedValue(null),
+}));
+
 import brewingRoutes from '../routes/brewing.js';
 import {
   getBrewingMethods, addBrew, getBrews, getBrewById,
-  getOrigins, createRecommendation, findRecentRecommendation, getBrewLinks,
+  getTastingNotes, getOrigins, createRecommendation, findRecentRecommendation, getBrewLinks,
   getVoteCounts, getRecommendation, recordVote,
 } from '../lib/db.js';
+import { extractTechnique } from '../lib/llm.js';
 
 const mockMethods: BrewingMethod[] = [
   {
@@ -208,6 +215,103 @@ describe('POST /brews', () => {
     });
 
     expect(res.status).toBe(400);
+  });
+
+  // AC-TST-1: technique in body — extractTechnique NOT called
+  it('does not call extractTechnique when technique is supplied in the body', async () => {
+    const technique = { bloom_weight_ratio: 2, bloom_duration_s: 30 };
+    const saved: Brew = { ...validBrewPayload, id: 1, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted', technique };
+    vi.mocked(addBrew).mockResolvedValue(saved);
+    vi.mocked(extractTechnique).mockResolvedValue(null);
+
+    await brewingRoutes.request('/brews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...validBrewPayload, technique }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(vi.mocked(extractTechnique)).not.toHaveBeenCalled();
+  });
+
+  // AC-TST-2: technique in body — addBrew called with the technique object
+  it('passes technique to addBrew when supplied in the body', async () => {
+    const technique = { bloom_weight_ratio: 2, bloom_duration_s: 30 };
+    const saved: Brew = { ...validBrewPayload, id: 1, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted', technique };
+    vi.mocked(addBrew).mockResolvedValue(saved);
+
+    await brewingRoutes.request('/brews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...validBrewPayload, technique }),
+    });
+
+    expect(vi.mocked(addBrew)).toHaveBeenCalledWith(
+      expect.objectContaining({ technique }),
+    );
+  });
+
+  // AC-TST-5: fire-and-forget extraction triggered when notes present
+  it('initiates technique extraction when notes are present', async () => {
+    const saved: Brew = { ...validBrewPayload, id: 1, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted' };
+    vi.mocked(addBrew).mockResolvedValue(saved);
+    vi.mocked(getBrewingMethods).mockResolvedValue(mockMethods);
+    vi.mocked(extractTechnique).mockResolvedValue(null);
+
+    await brewingRoutes.request('/brews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validBrewPayload), // has notes: 'Bright and clean'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0)); // flush microtask queue
+
+    expect(vi.mocked(getBrewingMethods)).toHaveBeenCalled();
+  });
+
+  // AC-TST-6: no extraction triggered when notes are absent
+  it('does not call extractTechnique when notes are absent', async () => {
+    const noNotesPayload = { ...validBrewPayload, notes: undefined };
+    const saved: Brew = { ...noNotesPayload, id: 2, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted' };
+    vi.mocked(addBrew).mockResolvedValue(saved);
+    vi.mocked(extractTechnique).mockResolvedValue(null);
+
+    await brewingRoutes.request('/brews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(noNotesPayload),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(vi.mocked(extractTechnique)).not.toHaveBeenCalled();
+  });
+});
+
+// AC-TST-4: GET /tasting-notes returns {note, count} sorted descending
+describe('GET /tasting-notes', () => {
+  it('returns tasting notes sorted by count descending', async () => {
+    vi.mocked(getTastingNotes).mockResolvedValue([
+      { note: 'bright', count: 4 },
+      { note: 'floral', count: 2 },
+      { note: 'earthy', count: 1 },
+    ]);
+
+    const res = await brewingRoutes.request('/tasting-notes');
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as Array<{ note: string; count: number }>;
+    expect(Array.isArray(body)).toBe(true);
+    expect(body[0]).toEqual({ note: 'bright', count: 4 });
+    expect(body[0].count).toBeGreaterThanOrEqual(body[1].count);
+    expect(body[1].count).toBeGreaterThanOrEqual(body[2].count);
+  });
+
+  it('returns empty array when no brews have notes', async () => {
+    vi.mocked(getTastingNotes).mockResolvedValue([]);
+
+    const res = await brewingRoutes.request('/tasting-notes');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
   });
 });
 
