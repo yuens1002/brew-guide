@@ -219,7 +219,7 @@ describe('POST /brews', () => {
 
   // AC-TST-1: technique in body — extractTechnique NOT called
   it('does not call extractTechnique when technique is supplied in the body', async () => {
-    const technique = { bloom_weight_ratio: 2, bloom_duration_s: 30 };
+    const technique = { bloom_weight_ratio: 2, bloom_duration_s: 30, pour_stages: [] } as import('../types.js').BrewTechnique;
     const saved: Brew = { ...validBrewPayload, id: 1, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted', technique };
     vi.mocked(addBrew).mockResolvedValue(saved);
     vi.mocked(extractTechnique).mockResolvedValue(null);
@@ -236,7 +236,7 @@ describe('POST /brews', () => {
 
   // AC-TST-2: technique in body — addBrew called with the technique object
   it('passes technique to addBrew when supplied in the body', async () => {
-    const technique = { bloom_weight_ratio: 2, bloom_duration_s: 30 };
+    const technique = { bloom_weight_ratio: 2, bloom_duration_s: 30, pour_stages: [] } as import('../types.js').BrewTechnique;
     const saved: Brew = { ...validBrewPayload, id: 1, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted', technique };
     vi.mocked(addBrew).mockResolvedValue(saved);
 
