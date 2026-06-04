@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { getBrewingMethods, getBrews, getBrewById, addBrew, updateBrewTechnique, getTastingNotes, getOrigins, getBrewLinks, recordVote, getRecommendation } from '../lib/db.js';
+import { getBrewingMethods, getBrews, getBrewById, addBrew, updateBrewTechnique, getTastingNotes, getOrigins, getBrewLinks, recordVote, getRecommendation, getOriginBrewProfile } from '../lib/db.js';
 import { computeBestBrew, tryLinkBrew, resolveOrigin } from '../lib/recommend.js';
 import { extractTechnique } from '../lib/llm.js';
 import type { BrewingMethod, Brew, BrewTechnique } from '../types.js';
@@ -18,6 +18,30 @@ app.get('/origins', async (c) => {
 app.get('/tasting-notes', async (c) => {
   const notes = await getTastingNotes();
   return c.json(notes);
+});
+
+// GET /tasting-suggestions?origin=X&roast_level=Y&method_id=Z
+app.get('/tasting-suggestions', async (c) => {
+  const origin = c.req.query('origin');
+  if (!origin) return c.json([]);
+
+  const roastLevel = c.req.query('roast_level');
+  const methodIdRaw = c.req.query('method_id');
+  const methodId = methodIdRaw ? parseInt(methodIdRaw, 10) : NaN;
+
+  if (roastLevel && !isNaN(methodId)) {
+    const profile = await getOriginBrewProfile(origin, roastLevel, methodId);
+    if (profile?.confident && profile.tasting_notes) {
+      const notes = profile.tasting_notes
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean);
+      return c.json(notes);
+    }
+  }
+
+  const global = await getTastingNotes();
+  return c.json(global.slice(0, 20).map((n) => n.note));
 });
 
 // GET /brewing-methods

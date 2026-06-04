@@ -1,7 +1,9 @@
 import {
   getBrewingMethods, getBrews, getOrigins,
   createRecommendation, findRecentRecommendation, linkBrewToRecommendation,
+  getOriginBrewProfile,
 } from './db.js';
+import { getOrTriggerOriginProfile } from './origin-profile.js';
 import type {
   BrewWithMethod, Brew,
   Recommendation, RecommendationParams, SourceRef, TastingNote,
@@ -144,7 +146,7 @@ export async function computeBestBrew(
   const methods = await getBrewingMethods();
 
   // Resolve method
-  const method = params.brewing_method_id
+  let method = params.brewing_method_id
     ? methods.find((m) => m.id === params.brewing_method_id)
     : methods[0];
   if (!method) throw new Error(params.brewing_method_id ? 'Brewing method not found' : 'No brewing methods available');
@@ -212,25 +214,58 @@ export async function computeBestBrew(
       grind_size: modeField(topN, 'grind_size') || method.grind_size,
     };
   } else {
-    // No matches — pure method defaults
-    confidence = 'low';
-    sources = [];
-    consensus = {
-      water_temp_c: method.default_temp_c,
-      ratio: method.default_ratio,
-      brew_time_s: method.default_brew_time_s,
-      grind_size: method.grind_size,
-    };
+    // No community matches — try origin brew profile
+    const profile = params.origin && params.roast_level
+      ? await getOrTriggerOriginProfile(params.origin, params.roast_level, method.id, method.name)
+      : null;
+
+    if (profile && profile.confident) {
+      confidence = 'medium';
+      sources = [];
+      consensus = {
+        water_temp_c: profile.water_temp_c,
+        ratio: profile.ratio,
+        brew_time_s: profile.brew_time_s,
+        grind_size: profile.grind_size,
+      };
+      // Inject profile technique if method has no seeded technique
+      if (!method.technique && profile.technique) {
+        method = { ...method, technique: profile.technique };
+      }
+    } else {
+      confidence = 'low';
+      sources = [];
+      consensus = {
+        water_temp_c: method.default_temp_c,
+        ratio: method.default_ratio,
+        brew_time_s: method.default_brew_time_s,
+        grind_size: method.grind_size,
+      };
+    }
+  }
+
+  // Determine profile availability for source attribution and tasting note supplement
+  const profile = params.origin && params.roast_level
+    ? await getOriginBrewProfile(params.origin, params.roast_level, method.id)
+    : null;
+  const hasProfile = profile?.confident ?? false;
+
+  // Build source attribution
+  let source_attribution: string;
+  if (topN.length > 0 && hasProfile) {
+    source_attribution = `Based on ${topN.length} community brew${topN.length > 1 ? 's' : ''} + origin profile`;
+  } else if (topN.length > 0) {
+    source_attribution = `Based on ${topN.length} community brew${topN.length > 1 ? 's' : ''}`;
+  } else if (hasProfile) {
+    source_attribution = 'Origin profile informed this recommendation';
+  } else {
+    source_attribution = `No community data yet — using ${method.name} defaults`;
   }
 
   // Build recommendation text
   const originText = params.origin || 'your coffee';
   const roastText = params.roast_level ? ` (${params.roast_level} roast)` : '';
-  const sourceText = topN.length > 0
-    ? `Based on ${topN.length} community brew${topN.length > 1 ? 's' : ''}`
-    : `No community data yet — using ${method.name} defaults`;
-
-  const recommendation = `${sourceText}. For ${originText}${roastText}, try ${method.name} at ${consensus.water_temp_c}°C with a ${consensus.grind_size} grind, ${consensus.brew_time_s}s brew time, 1:${Math.round(1 / consensus.ratio)} ratio.`;
+  const recommendation = `${source_attribution}. For ${originText}${roastText}, try ${method.name} at ${consensus.water_temp_c}°C with a ${consensus.grind_size} grind, ${consensus.brew_time_s}s brew time, 1:${Math.round(1 / consensus.ratio)} ratio.`;
 
   // Upsert prediction (deterministic fingerprint → votes accumulate across calls)
   const rec = await createRecommendation({
@@ -247,7 +282,17 @@ export async function computeBestBrew(
     sources: JSON.stringify(sources),
   });
 
-  const tasting_notes = aggregateTastingNotes(topN, 8);
+  let tasting_notes = aggregateTastingNotes(topN, 8);
+
+  // Supplement tasting notes from origin profile when community brews have none
+  if (tasting_notes.length === 0 && hasProfile && profile?.tasting_notes) {
+    tasting_notes = profile.tasting_notes
+      .split(',')
+      .map((n) => n.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 8)
+      .map((note) => ({ note, count: 1 }));
+  }
 
   return {
     id: rec.id,
@@ -267,6 +312,7 @@ export async function computeBestBrew(
     data_points_used: topN.length,
     technique: method.technique ?? null,
     tasting_notes,
+    source_attribution,
     thumbs_up: rec.thumbs_up,
     thumbs_down: rec.thumbs_down,
   };

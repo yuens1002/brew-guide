@@ -1777,7 +1777,7 @@
     }
 
     // ── Combobox factory ────────────────────────────────────────
-    function initCombobox(inputId, dropdownId) {
+    function initCombobox(inputId, dropdownId, onSelect) {
       const input    = document.getElementById(inputId);
       const dropdown = document.getElementById(dropdownId);
 
@@ -1800,6 +1800,7 @@
                                   input.dataset.variety = mapped ? mapped.variety || '' : '';
                                   input.dataset.originName = mapped ? mapped.name : '';
                                   dropdown.classList.add('hidden');
+                                  if (onSelect) onSelect(mapped ? mapped.name : o.displayName);
                                 });
                 dropdown.appendChild(item);
               });
@@ -1816,6 +1817,7 @@
                                 input.dataset.variety = parsed.variety || '';
                                 input.dataset.originName = '';
                                 dropdown.classList.add('hidden');
+                                if (onSelect) onSelect(parsed.origin);
                               });
                               dropdown.appendChild(newItem);
                             }
@@ -1865,7 +1867,52 @@
             }
 
       initCombobox('originInputA', 'originDropdownA');
-      initCombobox('originInputB', 'originDropdownB');
+
+      window._profileChips = [];
+
+      async function onOriginBSelect(originName) {
+        const roast    = document.getElementById('roastB').value;
+        const methodId = document.getElementById('methodB').value;
+        if (!roast || !methodId) return;
+        try {
+          const res = await fetch(`${API}/tasting-suggestions?origin=${encodeURIComponent(originName)}&roast_level=${encodeURIComponent(roast)}&method_id=${encodeURIComponent(methodId)}`);
+          if (!res.ok) return;
+          const notes = await res.json();
+          // Remove previously auto-added profile chips before adding new ones
+          window._profileChips.forEach(note => {
+            const idx = window._tastingChips.indexOf(note);
+            if (idx !== -1) window._tastingChips.splice(idx, 1);
+          });
+          window._profileChips = [];
+          const added = [];
+          for (const note of notes) {
+            if (added.length >= 5) break;
+            const n = note.trim().toLowerCase();
+            if (n && !window._tastingChips.includes(n)) {
+              window._tastingChips.push(n);
+              added.push(n);
+            }
+          }
+          window._profileChips = added;
+          renderChips();
+          updateSliderHeight();
+        } catch { /* ignore */ }
+      }
+
+      initCombobox('originInputB', 'originDropdownB', onOriginBSelect);
+
+      // Clear profile-added chips when origin field is emptied
+      document.getElementById('originInputB').addEventListener('input', () => {
+        if (!document.getElementById('originInputB').value.trim() && window._profileChips.length > 0) {
+          window._profileChips.forEach(note => {
+            const idx = window._tastingChips.indexOf(note);
+            if (idx !== -1) window._tastingChips.splice(idx, 1);
+          });
+          window._profileChips = [];
+          renderChips();
+          updateSliderHeight();
+        }
+      });
 
       // Methods — populate both selects
       const methodMap = {};

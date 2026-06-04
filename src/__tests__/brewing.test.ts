@@ -16,7 +16,13 @@ vi.mock('../lib/db.js', () => ({
   getVoteCounts: vi.fn(),
   getRecommendation: vi.fn(),
   recordVote: vi.fn(),
+  getOriginBrewProfile: vi.fn(),
 }));
+
+vi.mock('../lib/recommend.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/recommend.js')>();
+  return { ...actual };
+});
 
 vi.mock('../lib/llm.js', () => ({
   extractTechnique: vi.fn().mockResolvedValue(null),
@@ -26,7 +32,7 @@ import brewingRoutes from '../routes/brewing.js';
 import {
   getBrewingMethods, addBrew, getBrews, getBrewById,
   getTastingNotes, getOrigins, createRecommendation, findRecentRecommendation, getBrewLinks,
-  getVoteCounts, getRecommendation, recordVote,
+  getVoteCounts, getRecommendation, recordVote, getOriginBrewProfile,
 } from '../lib/db.js';
 import { extractTechnique } from '../lib/llm.js';
 
@@ -131,6 +137,7 @@ beforeEach(() => {
   vi.mocked(getVoteCounts).mockResolvedValue({ thumbs_up: 0, thumbs_down: 0 });
   vi.mocked(getRecommendation).mockResolvedValue(null);
   vi.mocked(recordVote).mockResolvedValue({ thumbs_up: 1, thumbs_down: 0 });
+  vi.mocked(getOriginBrewProfile).mockResolvedValue(null);
 });
 
 describe('GET /origins', () => {
@@ -565,5 +572,60 @@ describe('POST /recommend/:id/vote', () => {
     });
 
     expect(res.status).toBe(400);
+  });
+});
+
+// ── GET /tasting-suggestions ────────────────────────────────
+
+describe('GET /tasting-suggestions', () => {
+  // AC-TST-4: returns profile notes when confident profile exists
+  it('returns profile tasting notes when confident profile exists', async () => {
+    vi.mocked(getOriginBrewProfile).mockResolvedValue({
+      id: 1,
+      origin: 'Ethiopia',
+      roast_level: 'light',
+      brewing_method_id: 1,
+      water_temp_c: 94,
+      ratio: 0.0625,
+      brew_time_s: 210,
+      grind_size: 'medium-fine',
+      tasting_notes: 'blueberry, floral, citrus, bright, jasmine',
+      technique: null,
+      source: 'llm_generated',
+      confident: true,
+      generated_at: '2026-06-01T00:00:00Z',
+      last_verified: null,
+    });
+
+    const res = await brewingRoutes.request('/tasting-suggestions?origin=Ethiopia&roast_level=light&method_id=1');
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual(['blueberry', 'floral', 'citrus', 'bright', 'jasmine']);
+    expect(getOriginBrewProfile).toHaveBeenCalledWith('Ethiopia', 'light', 1);
+  });
+
+  // AC-FN-E2: falls back to global tasting notes when no confident profile
+  it('returns global tasting notes (top-20) when no confident profile exists', async () => {
+    vi.mocked(getOriginBrewProfile).mockResolvedValue(null);
+    vi.mocked(getTastingNotes).mockResolvedValue([
+      { note: 'caramel', count: 10 },
+      { note: 'chocolate', count: 8 },
+      { note: 'citrus', count: 5 },
+    ]);
+
+    const res = await brewingRoutes.request('/tasting-suggestions?origin=Unknown&roast_level=medium&method_id=1');
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual(['caramel', 'chocolate', 'citrus']);
+  });
+
+  // AC-FN-E3: missing origin returns empty array
+  it('returns empty array when origin param is missing', async () => {
+    const res = await brewingRoutes.request('/tasting-suggestions');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
   });
 });

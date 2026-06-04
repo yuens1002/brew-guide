@@ -2,6 +2,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import type {
   BrewingMethod, Brew, BrewWithMethod, BrewSource,
   Origin, RecommendationRecord, BrewRecommendationLink, BrewTechnique, TastingNote, VoteResponse,
+  OriginBrewProfile,
 } from '../types.js';
 
 const prisma = new PrismaClient();
@@ -316,6 +317,79 @@ export async function getBrewLinks(brewId: number): Promise<BrewRecommendationLi
     user_vote: (r.user_vote as 'up' | 'down' | null) ?? undefined,
     linked_at: r.linked_at.toISOString(),
   }));
+}
+
+// ── Origin Brew Profiles ─────────────────────────────────
+
+function mapProfile(r: {
+  id: number; origin: string; roast_level: string; brewing_method_id: number;
+  water_temp_c: number; ratio: number; brew_time_s: number; grind_size: string;
+  tasting_notes: string; technique: Prisma.JsonValue; source: string;
+  confident: boolean; generated_at: Date; last_verified: Date | null;
+}): OriginBrewProfile {
+  return {
+    id: r.id,
+    origin: r.origin,
+    roast_level: r.roast_level,
+    brewing_method_id: r.brewing_method_id,
+    water_temp_c: r.water_temp_c,
+    ratio: r.ratio,
+    brew_time_s: r.brew_time_s,
+    grind_size: r.grind_size,
+    tasting_notes: r.tasting_notes,
+    technique: r.technique as BrewTechnique | null,
+    source: r.source as OriginBrewProfile['source'],
+    confident: r.confident,
+    generated_at: r.generated_at.toISOString(),
+    last_verified: r.last_verified?.toISOString() ?? null,
+  };
+}
+
+export async function getOriginBrewProfile(
+  origin: string,
+  roastLevel: string,
+  brewingMethodId: number,
+): Promise<OriginBrewProfile | null> {
+  const r = await prisma.originBrewProfile.findUnique({
+    where: { origin_roast_level_brewing_method_id: { origin, roast_level: roastLevel, brewing_method_id: brewingMethodId } },
+  });
+  return r ? mapProfile(r) : null;
+}
+
+export async function upsertOriginBrewProfile(
+  profile: Omit<OriginBrewProfile, 'id' | 'generated_at' | 'last_verified'> & { last_verified?: Date },
+): Promise<OriginBrewProfile> {
+  const data = {
+    water_temp_c: profile.water_temp_c,
+    ratio: profile.ratio,
+    brew_time_s: profile.brew_time_s,
+    grind_size: profile.grind_size,
+    tasting_notes: profile.tasting_notes,
+    technique: profile.technique != null ? (profile.technique as Prisma.InputJsonValue) : Prisma.JsonNull,
+    source: profile.source,
+    confident: profile.confident,
+    last_verified: profile.last_verified ?? new Date(),
+  };
+  const r = await prisma.originBrewProfile.upsert({
+    where: { origin_roast_level_brewing_method_id: { origin: profile.origin, roast_level: profile.roast_level, brewing_method_id: profile.brewing_method_id } },
+    update: data,
+    create: { origin: profile.origin, roast_level: profile.roast_level, brewing_method_id: profile.brewing_method_id, ...data },
+  });
+  return mapProfile(r);
+}
+
+export async function getUnverifiedOriginProfiles(olderThanDays: number): Promise<OriginBrewProfile[]> {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+  const rows = await prisma.originBrewProfile.findMany({
+    where: {
+      OR: [
+        { source: 'needs_review' },
+        { last_verified: { lt: cutoff } },
+        { last_verified: null },
+      ],
+    },
+  });
+  return rows.map(mapProfile);
 }
 
 // ── Vote Counts ───────────────────────────────────────────

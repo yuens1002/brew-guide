@@ -81,6 +81,26 @@ model Recommendation {
   @@map("recommendations")
 }
 
+model OriginBrewProfile {
+  id                Int       @id @default(autoincrement())
+  origin            String
+  roast_level       String
+  brewing_method_id Int
+  water_temp_c      Int
+  ratio             Float
+  brew_time_s       Int
+  grind_size        String
+  tasting_notes     String
+  technique         Json?
+  source            String    @default("llm_generated")
+  confident         Boolean   @default(false)
+  generated_at      DateTime  @default(now()) @db.Timestamptz(3)
+  last_verified     DateTime? @db.Timestamptz(3)
+
+  @@unique([origin, roast_level, brewing_method_id])
+  @@map("origin_brew_profiles")
+}
+
 model BrewRecommendationLink {
   brew_id           Int
   recommendation_id Int

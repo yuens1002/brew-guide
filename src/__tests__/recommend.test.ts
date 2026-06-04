@@ -10,13 +10,20 @@ vi.mock('../lib/db.js', () => ({
   createRecommendation: vi.fn(),
   findRecentRecommendation: vi.fn(),
   linkBrewToRecommendation: vi.fn(),
+  getOriginBrewProfile: vi.fn(),
+}));
+
+vi.mock('../lib/origin-profile.js', () => ({
+  getOrTriggerOriginProfile: vi.fn(),
 }));
 
 import { computeBestBrew, tryLinkBrew, resolveOrigin } from '../lib/recommend.js';
 import {
   getBrewingMethods, getBrews, getOrigins,
   createRecommendation, findRecentRecommendation, linkBrewToRecommendation,
+  getOriginBrewProfile,
 } from '../lib/db.js';
+import { getOrTriggerOriginProfile } from '../lib/origin-profile.js';
 
 const mockMethod: BrewingMethod = {
   id: 1,
@@ -76,6 +83,8 @@ beforeEach(() => {
   vi.mocked(linkBrewToRecommendation).mockResolvedValue({
     brew_id: 1, recommendation_id: 1, match_confidence: 0.85, linked_at: '',
   });
+  vi.mocked(getOriginBrewProfile).mockResolvedValue(null);
+  vi.mocked(getOrTriggerOriginProfile).mockResolvedValue(null);
 });
 
 // ── computeBestBrew ────────────────────────────────────────

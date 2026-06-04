@@ -1,4 +1,4 @@
-import type { BrewTechnique } from '../types.js';
+import type { BrewTechnique, OriginBrewProfilePayload } from '../types.js';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'anthropic/claude-haiku-4-5';
@@ -58,6 +58,83 @@ const METHOD_SCHEMAS: Record<string, object> = {
     serve_with_grounds: 'boolean (optional)',
   },
 };
+
+export async function generateOriginBrewProfile(
+  origin: string,
+  roastLevel: string,
+  methodName: string,
+): Promise<OriginBrewProfilePayload | null> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
+
+  const schema = METHOD_SCHEMAS[methodName];
+  if (!schema) return null;
+
+  const grindSizes = 'extra-fine | fine | fine-medium | medium-fine | medium | medium-coarse | coarse';
+
+  const userPrompt = `You are a specialty coffee expert. Generate a complete brew profile for:
+- Origin: ${origin}
+- Roast: ${roastLevel}
+- Method: ${methodName}
+
+Return JSON with this exact shape (no extra keys, no markdown):
+{
+  "confident": true,
+  "water_temp_c": <integer 80-100>,
+  "ratio": <float, e.g. 0.0625 for 1:16>,
+  "brew_time_s": <integer>,
+  "grind_size": "<one of: ${grindSizes}>",
+  "tasting_notes": ["note1", "note2", "note3", "note4", "note5"],
+  "technique": ${JSON.stringify(schema, null, 2)}
+}
+
+Rules:
+- tasting_notes: 4-6 flavor descriptors typical for this origin and roast (e.g. "blueberry", "floral", "bright")
+- technique: fill with realistic values matching the schema shape above
+- If you have low confidence about this specific origin/roast/method, return exactly: {"confident": false}`;
+
+  try {
+    const res = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://brew-guide-production.up.railway.app',
+        'X-Title': 'brew-guide',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: 'user', content: userPrompt }],
+        max_tokens: 768,
+        temperature: 0,
+      }),
+    });
+
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) return null;
+
+    const parsed = JSON.parse(content) as { confident?: boolean } & Partial<OriginBrewProfilePayload>;
+    if (!parsed.confident) return null;
+    if (!parsed.water_temp_c || !parsed.ratio || !parsed.brew_time_s || !parsed.grind_size) return null;
+
+    return {
+      confident: true,
+      water_temp_c: parsed.water_temp_c,
+      ratio: parsed.ratio,
+      brew_time_s: parsed.brew_time_s,
+      grind_size: parsed.grind_size,
+      tasting_notes: Array.isArray(parsed.tasting_notes) ? parsed.tasting_notes : [],
+      technique: (parsed.technique as BrewTechnique) ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export async function extractTechnique(
   methodName: string,

@@ -29,7 +29,7 @@ function buildMcpServer(): McpServer {
     'recommend',
     {
       title: 'Recommend Brew Parameters',
-      description: 'Get a community-consensus brew recommendation. Returns brew parameters (temp, ratio, grind, time), confidence tier (high/medium/low based on community data), sources, method-specific technique guidance (e.g. bloom timing, pour stages, steep time), and tasting_notes — a frequency-weighted flavor profile aggregated from matching community brews. tasting_notes is sorted by count descending; lead your response with the top 3–5 as the primary cup profile, and offer the remainder if the user asks for more detail. Also returns tasting_notes_summary, a pre-formatted sentence you can embed directly.',
+      description: 'Get a community-consensus brew recommendation. Returns brew parameters (temp, ratio, grind, time), confidence tier (high/medium/low based on community data), sources, method-specific technique guidance (e.g. bloom timing, pour stages, steep time), tasting_notes — a frequency-weighted flavor profile aggregated from community brews or the origin brew profile (sorted by count descending; lead your response with the top 3–5 as the primary cup profile), tasting_notes_summary (a pre-formatted sentence you can embed directly), and source_attribution — a human-readable string explaining the data path (e.g. "Based on 5 community brews", "Origin profile informed this recommendation", "No community data yet — using Pour Over defaults"). Surface source_attribution prominently so the user understands how confident to be.',
       inputSchema: {
         origin: z.string().optional().describe('Coffee origin (e.g. Colombia, Ethiopia)'),
         roast_level: z.string().optional().describe('Roast level (light, medium, dark)'),
