@@ -303,6 +303,7 @@
 
     /* ── Result card ────────────────────────────────────────── */
     .result-card {
+      position: relative;
       margin-top: 28px;
       border-top: 1px solid var(--border);
       padding-top: 28px;
@@ -331,6 +332,9 @@
     }
 
     .confidence-badge {
+      position: absolute;
+      top: 28px;
+      right: 0;
       display: inline-flex;
       align-items: center;
       gap: 6px;
@@ -513,7 +517,6 @@
     /* ── Slide wrapper ──────────────────────────────────────── */
     .slide-wrapper {
       position: relative;
-      overflow: hidden;
       min-height: 220px;
       transition: height 0.4s ease;
     }
@@ -523,14 +526,14 @@
       top: 0;
       left: 0;
       width: 100%;
-      transition: transform 0.4s ease;
+      transition: transform 0.4s ease, opacity 0.4s ease;
     }
 
-    #faceA { transform: translateX(0); }
-    #faceB { transform: translateX(100%); }
+    #faceA { transform: translateX(0); opacity: 1; pointer-events: auto; }
+    #faceB { transform: translateX(100%); opacity: 0; pointer-events: none; }
 
-    .slide-wrapper.show-b #faceA { transform: translateX(-100%); }
-    .slide-wrapper.show-b #faceB { transform: translateX(0); }
+    .slide-wrapper.show-b #faceA { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+    .slide-wrapper.show-b #faceB { transform: translateX(0); opacity: 1; pointer-events: auto; }
 
     /* ── Combobox ────────────────────────────────────────────── */
     .combobox-wrap { position: relative; }
@@ -999,19 +1002,23 @@
 
     /* ── Chip input (tasting notes) ─────────────────────────── */
     .chip-input-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .chip-text-input-row {
       border: 1px solid var(--border);
       border-radius: var(--radius);
       background: var(--bg-input);
-      padding: 7px 10px;
+      transition: border-color 0.2s;
+    }
+    .chip-text-input-row:focus-within { border-color: var(--amber); }
+    .chips-row {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
-      cursor: text;
-      transition: border-color 0.2s;
-      min-height: 46px;
-      align-items: center;
+      padding: 2px 0 4px;
     }
-    .chip-input-wrap:focus-within { border-color: var(--amber); }
     .chip {
       display: inline-flex;
       align-items: center;
@@ -1045,10 +1052,9 @@
       color: var(--cream);
       font-family: inherit;
       font-size: 15px;
-      padding: 3px 4px;
-      min-width: 140px;
-      width: auto;
-      flex: 1;
+      padding: 10px 14px;
+      width: 100%;
+      box-sizing: border-box;
     }
     .chip-dropdown {
       position: absolute;
@@ -1162,15 +1168,15 @@
 
             <!-- Result card -->
             <div id="resultCard" class="result-card hidden">
+              <div class="confidence-badge" id="resBadge">
+                <div class="confidence-dot"></div>
+                <span id="resBadgeText"></span>
+              </div>
               <div class="result-header">
                 <div>
                   <div class="result-method" id="resMethod"></div>
                   <div class="result-origin" id="resOrigin"></div>
                   <div class="res-tasting-notes" id="resTastingNotes" style="display:none;"></div>
-                </div>
-                <div class="confidence-badge" id="resBadge">
-                  <div class="confidence-dot"></div>
-                  <span id="resBadgeText"></span>
                 </div>
               </div>
 
@@ -1314,9 +1320,11 @@
             <div class="field">
               <label>Tasting notes</label>
               <div class="combobox-wrap">
-                <div class="chip-input-wrap" id="chipInputWrap" onclick="document.getElementById('tastingNoteInput').focus()">
-                  <span id="chipsContainer"></span>
-                  <input type="text" id="tastingNoteInput" class="chip-text-input" placeholder="How did it taste? Fruity, floral, bitter…" autocomplete="off">
+                <div class="chip-input-wrap" id="chipInputWrap">
+                  <div class="chip-text-input-row">
+                    <input type="text" id="tastingNoteInput" class="chip-text-input" placeholder="How did it taste? Fruity, floral, bitter…" autocomplete="off">
+                  </div>
+                  <div class="chips-row" id="chipsContainer"></div>
                 </div>
                 <div id="tastingNoteDropdown" class="chip-dropdown hidden"></div>
               </div>
@@ -1544,8 +1552,7 @@
           <div class="form-row">
             <div class="field"><label>Shot time (s)</label><input type="number" id="tq_shot_time_s" placeholder="e.g. 28" min="0"></div>
             <div class="field"><label>Pressure (bar)</label><input type="number" id="tq_pressure_bar" placeholder="e.g. 9" min="0" step="0.5"></div>
-          </div>
-          <div class="field"><label>Filter type</label><select id="tq_filter_type_espresso"><option value="">Select</option><option value="paper">Paper</option><option value="metal">Metal</option><option value="cloth">Cloth</option></select></div>`;
+          </div>`;
         case 'French Press': return `
           <div class="form-row">
             <div class="field"><label>Steep time (s)</label><input type="number" id="tq_steep_time_s_fp" placeholder="e.g. 240" min="0"></div>
@@ -1663,12 +1670,11 @@
         if (name === 'Chemex') obj.filter_rinse = boolCheck('tq_filter_rinse');
       } else if (name === 'Espresso') {
         const pi = numVal('tq_preinfusion_s'), yr = numVal('tq_yield_ratio');
-        const st = numVal('tq_shot_time_s'), pb = numVal('tq_pressure_bar'), ft = strVal('tq_filter_type_espresso');
+        const st = numVal('tq_shot_time_s'), pb = numVal('tq_pressure_bar');
         if (pi != null) obj.preinfusion_s = pi;
         if (yr != null) obj.yield_ratio = yr;
         if (st != null) obj.shot_time_s = st;
         if (pb != null) obj.pressure_bar = pb;
-        if (ft) obj.filter_type = ft;
       } else if (name === 'French Press') {
         const sts = numVal('tq_steep_time_s_fp'), ps = strVal('tq_plunge_speed');
         const sas = numVal('tq_stir_at_s'), pw = boolCheck('tq_pre_wet');

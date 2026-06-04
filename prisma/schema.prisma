@@ -50,6 +50,7 @@ model Brew {
   source               String                   @default("user_submitted")
   source_url           String?
   field_confidence     String?
+  technique            Json?
   brewing_method       BrewingMethod            @relation(fields: [brewing_method_id], references: [id])
   recommendation_links BrewRecommendationLink[]
 

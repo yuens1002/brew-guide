@@ -29,7 +29,7 @@ function buildMcpServer(): McpServer {
     'recommend',
     {
       title: 'Recommend Brew Parameters',
-      description: 'Get a community-consensus brew recommendation. Returns brew parameters (temp, ratio, grind, time), confidence tier (high/medium/low based on community data), sources, and method-specific technique guidance (e.g. bloom timing, pour stages, steep time).',
+      description: 'Get a community-consensus brew recommendation. Returns brew parameters (temp, ratio, grind, time), confidence tier (high/medium/low based on community data), sources, method-specific technique guidance (e.g. bloom timing, pour stages, steep time), and tasting_notes — a frequency-weighted flavor profile aggregated from matching community brews. tasting_notes is sorted by count descending; lead your response with the top 3–5 as the primary cup profile, and offer the remainder if the user asks for more detail. Also returns tasting_notes_summary, a pre-formatted sentence you can embed directly.',
       inputSchema: {
         origin: z.string().optional().describe('Coffee origin (e.g. Colombia, Ethiopia)'),
         roast_level: z.string().optional().describe('Roast level (light, medium, dark)'),
@@ -42,7 +42,12 @@ function buildMcpServer(): McpServer {
       const resolvedOrigin = origin ? (await resolveOrigin(origin)).resolved : undefined;
       try {
         const result = await computeBestBrew({ origin: resolvedOrigin, roast_level, brewing_method_id, grind_size, variety });
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+        const top = result.tasting_notes.slice(0, 5);
+        const rest = result.tasting_notes.slice(5);
+        const tasting_notes_summary = top.length > 0
+          ? `Most noted: ${top.map(n => n.note).join(', ')}${rest.length > 0 ? ` · Also present: ${rest.map(n => n.note).join(', ')}` : ''}`
+          : '';
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, tasting_notes_summary }) }] };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Recommendation failed';
         return { content: [{ type: 'text' as const, text: msg }], isError: true };
