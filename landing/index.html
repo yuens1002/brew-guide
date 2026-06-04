@@ -1745,7 +1745,7 @@
       function showSuggestions(filter) {
         const lc = filter.toLowerCase();
         const pool = window._tastingNotes.length > 0 ? window._tastingNotes : FALLBACK_TASTING_NOTES;
-        const hits = pool.filter(n => n.includes(lc) && !window._tastingChips.includes(n)).slice(0, 10);
+        const hits = pool.filter(n => n.includes(lc) && !window._tastingChips.includes(n.toLowerCase())).slice(0, 10);
         dropdown.innerHTML = '';
         hits.forEach(n => {
           const item = document.createElement('div');
@@ -1942,9 +1942,12 @@
 
       initChipInput();
 
-      // Re-render technique fields when method B changes
+      // Re-render technique fields when method B changes; also retrigger chip suggestions
       document.getElementById('methodB').addEventListener('change', () => {
         renderTechniqueFields(document.getElementById('methodB').value);
+        const inputB = document.getElementById('originInputB');
+        const origin = inputB.dataset.originName || inputB.value.trim();
+        if (origin) onOriginBSelect(origin);
       });
 
       // Init slider height after all content is in DOM

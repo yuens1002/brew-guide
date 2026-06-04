@@ -185,6 +185,8 @@ export async function computeBestBrew(
   let confidence: 'high' | 'medium' | 'low';
   let sources: SourceRef[];
   let consensus: { water_temp_c: number; ratio: number; brew_time_s: number; grind_size: string };
+  // Single profile reference shared by the no-community branch and the attribution block below
+  let resolvedProfile: import('../types.js').OriginBrewProfile | null = null;
 
   if (topN.length >= 3 && totalWeight > 1.5) {
     confidence = 'high';
@@ -215,22 +217,23 @@ export async function computeBestBrew(
     };
   } else {
     // No community matches — try origin brew profile
-    const profile = params.origin && params.roast_level
+    const triggered = params.origin && params.roast_level
       ? await getOrTriggerOriginProfile(params.origin, params.roast_level, method.id, method.name)
       : null;
+    resolvedProfile = triggered;
 
-    if (profile && profile.confident) {
+    if (triggered && triggered.confident) {
       confidence = 'medium';
       sources = [];
       consensus = {
-        water_temp_c: profile.water_temp_c,
-        ratio: profile.ratio,
-        brew_time_s: profile.brew_time_s,
-        grind_size: profile.grind_size,
+        water_temp_c: triggered.water_temp_c,
+        ratio: triggered.ratio,
+        brew_time_s: triggered.brew_time_s,
+        grind_size: triggered.grind_size,
       };
       // Inject profile technique if method has no seeded technique
-      if (!method.technique && profile.technique) {
-        method = { ...method, technique: profile.technique };
+      if (!method.technique && triggered.technique) {
+        method = { ...method, technique: triggered.technique };
       }
     } else {
       confidence = 'low';
@@ -244,10 +247,11 @@ export async function computeBestBrew(
     }
   }
 
-  // Determine profile availability for source attribution and tasting note supplement
-  const profile = params.origin && params.roast_level
+  // For community paths, fetch profile once for attribution + tasting note supplement.
+  // For the no-community path, reuse the already-fetched resolvedProfile (no second DB call).
+  const profile = topN.length > 0 && params.origin && params.roast_level
     ? await getOriginBrewProfile(params.origin, params.roast_level, method.id)
-    : null;
+    : resolvedProfile;
   const hasProfile = profile?.confident ?? false;
 
   // Build source attribution

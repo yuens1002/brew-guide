@@ -3,8 +3,9 @@ import { StreamableHTTPTransport } from '@hono/mcp';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { corsHeaders, checkOrigin } from '../lib/mcp-common.js';
-import { getBrewingMethods, getBrews, getBrewById, addBrew, getBrewLinks } from '../lib/db.js';
+import { getBrewingMethods, getBrews, getBrewById, addBrew, getBrewLinks, updateBrewTechnique } from '../lib/db.js';
 import { computeBestBrew, tryLinkBrew, resolveOrigin } from '../lib/recommend.js';
+import { extractTechnique } from '../lib/llm.js';
 import type { Brew } from '../types.js';
 
 function buildMcpServer(): McpServer {
@@ -102,6 +103,22 @@ function buildMcpServer(): McpServer {
         field_confidence: fieldConfidence,
       } as Omit<Brew, 'id' | 'created_at'>);
       tryLinkBrew(brew).catch(() => {}); // fire-and-forget implicit feedback link
+
+      if (!params.technique && params.notes) {
+        const brewId = brew.id;
+        const methodId = params.brewing_method_id;
+        const notes = params.notes;
+        Promise.resolve()
+          .then(() => getBrewingMethods())
+          .then((methods) => {
+            const method = methods?.find((m) => m.id === methodId);
+            if (!method) return;
+            return extractTechnique(method.name, notes)
+              .then((technique) => technique && updateBrewTechnique(brewId, technique));
+          })
+          .catch(() => {});
+      }
+
       return { content: [{ type: 'text' as const, text: JSON.stringify({ id: brew.id, message: 'Brew record added successfully' }) }] };
     },
   );

@@ -87,6 +87,10 @@ export async function generateAndUpsertProfile(
     });
   }
 
+  // Don't overwrite a confident or curated row with a failure placeholder
+  const existing = await getOriginBrewProfile(origin, roastLevel, method.id);
+  if (existing?.confident || existing?.source === 'curated') return existing;
+
   return upsertOriginBrewProfile({
     origin,
     roast_level: roastLevel,
