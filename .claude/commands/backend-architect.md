@@ -92,6 +92,68 @@ In this project the `notes` field in `scrape-roasters.ts` powered `extractTechni
 
 Rule: a field format change is a contract change. Treat it like an API breaking change: find all consumers, update or deprecate them in the same commit.
 
+### 11. Use `== null` not `!value` when validating LLM-parsed numeric fields
+
+When checking whether a numeric field is present in a parsed LLM response, use `value == null` (or `typeof value !== 'number'`), never `!value`. Falsy checks reject `0` — a valid numeric value — causing the entire response to be discarded even when the model returned a coherent result.
+
+Anti-pattern:
+```typescript
+if (!parsed.water_temp_c || !parsed.ratio || !parsed.brew_time_s) return null;
+// Rejects water_temp_c=0, ratio=0, brew_time_s=0 — even if they're valid in context
+```
+
+Correct pattern:
+```typescript
+if (parsed.water_temp_c == null || parsed.ratio == null || parsed.brew_time_s == null) return null;
+```
+
+Rule: any field that could legitimately hold `0`, `false`, or an empty string must be tested for presence with `== null`, not truthiness. LLM response parsing is a boundary where this mistake surfaces most often — the model returns a correct response, but the parser discards it silently.
+
+---
+
+### 12. Fire-and-forget LLM generation must write a placeholder row before the async call
+
+When a function fires-and-forgets a background LLM generation for a given key (e.g. `(origin, roast_level, method_id)`), write a `needs_review` / `pending` placeholder row into the DB **inside the fire-and-forget, before calling the LLM**. This row acts as a lock: concurrent requests for the same key see an existing row and short-circuit immediately, preventing duplicate parallel LLM calls.
+
+Anti-pattern:
+```typescript
+Promise.resolve()
+  .then(() => callLlm(key))         // LLM call takes 2-5s; concurrent requests see no row
+  .then(async (result) => {
+    if (result) await upsert({ ...result, source: 'generated' });
+    else await upsert({ ...zeros, source: 'needs_review' }); // placeholder written too late
+  }).catch(() => {});
+```
+
+Correct pattern:
+```typescript
+Promise.resolve()
+  .then(async () => {
+    await upsert({ ...zeros, source: 'needs_review', confident: false }); // lock first
+    const result = await callLlm(key);
+    if (result) await upsert({ ...result, source: 'generated', confident: true });
+    // If null: placeholder remains as needs_review — cron will retry
+  }).catch(() => {});
+```
+
+Rule: the placeholder write and the LLM call are both inside the fire-and-forget (non-blocking to the request). Subsequent requests hit the DB read path, find the `needs_review` row, and return null without triggering a second generation.
+
+---
+
+### 13. LLM-calling scripts must pre-filter inputs for signal before the API call
+
+Before calling an LLM extraction function in a batch script, apply a cheap text heuristic to skip inputs that contain no signal. Sending tasting-descriptor notes (`'floral, citrus, bright'`) to `extractTechnique` will almost always return null, burning API credit for no gain.
+
+Pattern:
+```typescript
+const TECHNIQUE_SIGNAL = /\b(bloom|pour|steep|brew|°|bar|pressure|stage|grind|preinfusion|agit|swirl|stir|inverted|yield|rinse|plunge|drawdown|preheat|second|minute)\b/i;
+if (!TECHNIQUE_SIGNAL.test(brew.notes)) { skipped++; continue; }
+```
+
+Rule: any script that maps a text field through an LLM call must have a pre-filter that guards against inputs where the LLM is guaranteed (or near-certain) to return null. The filter cost is a regex match; the unguarded cost is an API call per row.
+
+---
+
 ### 6. Scraper/data-migration scripts must document their contract
 
 When a standalone script writes to a database or API (e.g., `scripts/scrape-roasters.ts`), add a header comment block that documents: (1) the target database/endpoint and required env vars, (2) whether the script is idempotent, (3) how to run it against production. Scripts without this context get run against the wrong target — the header costs 5 lines and prevents a production data incident. Discovered when the scraper shipped as a 700-line script with no target environment documentation.

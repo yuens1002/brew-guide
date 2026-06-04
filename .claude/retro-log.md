@@ -308,3 +308,73 @@ Running log of session lessons and fixes applied to project skills, templates, a
 - `.claude/commands/backend-architect.md` — added principle 10: changing seed data field semantics requires consumer audit
 
 **Prevented by:** `/backend-architect` principle 10 now requires grepping for all consumers of a field before changing its content format.
+
+---
+
+## 2026-06-04 — Copilot review on PR #10 (iterations 5-6)
+
+**Source:** Copilot PR review on `feat/origin-brew-profiles` (8 comments; 7 fixed, 1 advisory)
+
+---
+
+### Lesson 19: Boolean false defaults must not be unconditionally included in technique submission objects
+
+**Gap:** `buildTechniqueObject()` in `landing/index.html` unconditionally set `filter_rinse: false` (Chemex), `preheat_water: false` (Moka Pot), and `inverted: false` (AeroPress) even when the user didn't touch any technique input. This made the technique object non-empty on every AeroPress/Chemex/Moka brew, causing the server to treat it as a user-submitted technique and skip LLM extraction — even when the user wanted the LLM to extract from notes.
+
+**Root cause:** Boolean fields that default to `false` were included in the object unconditionally. The server decides "was technique submitted" by checking `Object.keys(technique).length > 0` — any `false` field defeats this check.
+
+**Role:** `/frontend-dev`
+
+**Fix applied to:**
+- `landing/index.html` — `filter_rinse` and `preheat_water` now only included when `true`; `inverted` only included when the user explicitly chose Inverted (`value === 'true'`)
+- `.claude/commands/frontend-dev.md` — added principle 4: boolean form fields with a false default must never be unconditionally added to the submission object
+
+**Prevented by:** `/frontend-dev` principle 4 now states: only include boolean technique fields when they carry a positive signal (`true` or an explicit non-default choice).
+
+---
+
+### Lesson 20: Use `== null` not falsy check when validating LLM-parsed numeric fields
+
+**Gap:** `generateOriginBrewProfile` validated required numeric fields with `!parsed.water_temp_c || !parsed.ratio || !parsed.brew_time_s`. This would incorrectly reject a valid `0` value — discarding a correct LLM response silently.
+
+**Root cause:** Falsy checking (`!value`) conflates "field is absent" with "field is zero/false/empty." LLM response parsing is a boundary where this surfaces: the model returns a coherent result with a valid numeric field, but the parser discards it.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `src/lib/llm.ts` — changed to `== null` checks for all numeric fields in `generateOriginBrewProfile`
+- `.claude/commands/backend-architect.md` — added principle 11: use `== null` not `!value` for numeric field presence checks in LLM response parsing
+
+**Prevented by:** `/backend-architect` principle 11 now requires `== null` for all presence checks on numeric fields in LLM response parsers.
+
+---
+
+### Lesson 21: Fire-and-forget LLM generation must write a placeholder row before the LLM call
+
+**Gap:** `getOrTriggerOriginProfile()` fired the LLM call before writing any row to the DB. Under burst traffic for an unknown (origin, roast, method) combo, every concurrent request would see no row and trigger its own LLM generation — potentially N parallel Haiku calls for the same key.
+
+**Root cause:** The `needs_review` placeholder was only written in the else branch — *after* the LLM call completed (2-5 seconds). During the LLM latency window, concurrent requests see no row and each trigger a new generation.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `src/lib/origin-profile.ts` — `getOrTriggerOriginProfile` now writes the `needs_review` placeholder as the first step inside the fire-and-forget, before calling `generateOriginBrewProfile`; concurrent requests hit the `existing?.confident === false` path and return null immediately
+- `.claude/commands/backend-architect.md` — added principle 12: fire-and-forget LLM generation must write a placeholder row before the async call
+
+**Prevented by:** `/backend-architect` principle 12 now requires placeholder-before-LLM pattern for all fire-and-forget generation flows.
+
+---
+
+### Lesson 22: LLM-calling scripts must pre-filter inputs for signal before the API call
+
+**Gap:** `backfill-technique.ts` called `extractTechnique()` on every brew with non-null `notes`. After the `scrape-roasters.ts` notes were changed to tasting descriptors, every call to the backfill returns null — burning LLM credits on inputs with zero technique signal.
+
+**Root cause:** No guard existed between "has notes" and "notes contain technique information." The two properties were conflated.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `scripts/backfill-technique.ts` — added `TECHNIQUE_SIGNAL` regex heuristic; skips notes with no technique keywords before calling `extractTechnique`
+- `.claude/commands/backend-architect.md` — added principle 13: LLM-calling scripts must pre-filter inputs for signal before the API call
+
+**Prevented by:** `/backend-architect` principle 13 now requires a pre-filter heuristic on any script that maps a text field through an LLM call.

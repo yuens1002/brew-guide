@@ -50,3 +50,27 @@ Rule: wherever `addChip()` or any function normalizes to lowercase before storin
 `overflow: hidden` on a slide wrapper clips out-of-view content during CSS `translateX` transitions. Removing it (e.g., to fix dropdown visibility) allows Face B content to bleed outside the card boundary on narrow viewports during the animation.
 
 If dropdown visibility is the concern, use `z-index` + `position: absolute` on the dropdown rather than removing the clip from the container. If the clip must be removed, add `clip-path` or `max-width: 100%; overflow-x: hidden` on a parent that doesn't affect the dropdown stacking context.
+
+### 4. Boolean form fields with a false default must never be unconditionally added to the submission object
+
+When a technique field is a checkbox or boolean toggle with a default of `false`, only include it in the submission when the user explicitly sets it to `true`. Unconditionally adding `field: false` makes the object non-empty and causes the server to treat it as "user provided technique," bypassing LLM extraction even when the user touched no technique inputs.
+
+Anti-pattern:
+```js
+obj.filter_rinse = boolCheck('tq_filter_rinse');  // always adds field, even when false
+obj.preheat_water = ph;                            // same — always included
+obj.inverted = invEl ? invEl.value === 'true' : false; // always added, defaults to false
+```
+
+Correct pattern:
+```js
+const fr = boolCheck('tq_filter_rinse');
+if (fr) obj.filter_rinse = fr;          // only included when checked
+
+if (ph) obj.preheat_water = ph;          // same
+
+// For toggles with a meaningful default (Standard), only include when non-default:
+if (invEl && invEl.value === 'true') obj.inverted = true;
+```
+
+Rule: the server infers "technique was submitted" from `Object.keys(technique).length > 0`. Every field unconditionally set to `false` defeats this check. Only include boolean fields when they carry a positive signal — either `true` or an explicit non-default choice.
