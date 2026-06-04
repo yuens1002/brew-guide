@@ -19,16 +19,24 @@ A public MCP server that acts as an agentic coffee knowledge base — answering 
 
 ```
 src/
-  server.ts          → entrypoint: binds port, never imported by tests
-  index.ts           → pure Hono app: mounts routes, safe to import anywhere
+  server.ts             → entrypoint: binds port, never imported by tests
+  index.ts              → pure Hono app: mounts routes, safe to import anywhere
   routes/
-    brewing.ts       → REST routes (/origins, /brewing-methods, /brews, /recommend)
-    mcp.ts           → MCP tool handlers + Streamable HTTP transport
+    brewing.ts          → REST routes (/origins, /brewing-methods, /brews,
+                          /recommend, /tasting-notes, /tasting-suggestions)
+    mcp.ts              → MCP tool handlers + Streamable HTTP transport
   lib/
-    db.ts            → Prisma client wrapper: all DB access; mock this in tests
-    recommend.ts     → recommendation engine: computeBestBrew, tryLinkBrew, resolveOrigin
-    mcp-common.ts    → checkOrigin, corsHeaders
-  types.ts           → all shared interfaces (Brew, Recommendation, Origin, etc.)
+    db.ts               → Prisma client wrapper: all DB access; mock this in tests
+    recommend.ts        → recommendation engine: computeBestBrew, tryLinkBrew, resolveOrigin
+    llm.ts              → OpenRouter/Haiku wrappers: extractTechnique, generateOriginBrewProfile
+    origin-profile.ts   → getOrTriggerOriginProfile (fire-and-forget), generateAndUpsertProfile
+    mcp-common.ts       → checkOrigin, corsHeaders
+  types.ts              → all shared interfaces (Brew, Recommendation, OriginBrewProfile, etc.)
+scripts/
+  scrape-roasters.ts          → seeds 32 curated Pour Over + Espresso brews
+  bootstrap-origin-profiles.ts → derives curated profiles from brews; LLM for unseeded origins
+  batch-origin-profiles.ts    → cron: refresh needs_review + stale rows (ORIGIN_PROFILE_REFRESH_DAYS)
+  backfill-technique.ts       → one-shot: LLM-extract technique for brews with notes but no technique
 ```
 
 ## Request flow
@@ -63,7 +71,7 @@ MCP Client → POST /mcp
 | `search_brews` | ✅ Live | Filter brew log by origin, method, limit |
 | `compare_brew` | ✅ Live | Delta vs method defaults; real `match_score` from `brew_recommendation_links` (`src/routes/mcp.ts`, `src/lib/db.ts:getBrewLinks`) |
 
-## Data model (v4)
+## Data model (v5)
 
 ```
 origins
@@ -83,7 +91,8 @@ brews
   rating INT (1–5), notes TEXT, created_at TIMESTAMPTZ,
   source TEXT (user_submitted | scraped:reddit | scraped:home-barista | scraped:roaster),
   source_url TEXT,
-  field_confidence TEXT (JSON: per-field extraction confidence, 0–1)
+  field_confidence TEXT (JSON: per-field extraction confidence, 0–1),
+  technique JSONB (method-scoped technique: pour stages, bloom, steep, etc.)
   UNIQUE (source_url, brewing_method_id)   -- composite, allows same URL across methods
 
 recommendations
@@ -99,11 +108,22 @@ brew_recommendation_links
   brew_id FK, recommendation_id FK,
   match_confidence REAL, user_vote TEXT (up|down|NULL), linked_at TIMESTAMPTZ
   PK (brew_id, recommendation_id)
+
+origin_brew_profiles                            -- NEW in v5
+  id PK,
+  origin TEXT, roast_level TEXT, brewing_method_id FK → brewing_methods,
+  water_temp_c INT, ratio REAL, brew_time_s INT, grind_size TEXT,
+  tasting_notes TEXT (comma-separated flavor descriptors),
+  technique JSONB (method-scoped, same schema as brews.technique),
+  source TEXT (curated | llm_generated | needs_review),
+  confident BOOLEAN DEFAULT false,
+  generated_at TIMESTAMPTZ, last_verified TIMESTAMPTZ
+  UNIQUE (origin, roast_level, brewing_method_id)
 ```
 
 ## Recommendation engine
 
-`src/lib/recommend.ts` — pure deterministic logic, no LLM.
+`src/lib/recommend.ts` — deterministic logic. LLM is only consulted for origin profile generation (background, not on the hot path).
 
 ### computeBestBrew flow
 
@@ -115,19 +135,61 @@ brew_recommendation_links
    - Roast level (weight 2): exact = 1.0, adjacent roast = 0.5 (e.g. medium ↔ medium-light)
    - Variety match (weight 1): compares `brew.variety` directly against `params.variety` (per-brew, not per-origin map)
    - Grind size (weight 1): exact = 1.0
-4. **Composite score** = `matchScore × (rating/5) × recencyDecay × sourceTrust`
+4. **Composite score** = `matchScore × (rating/5) × recencyDecay × sourceTrust × originConf`
    - `recencyDecay`: linear 1.0 → 0.1 over 365 days
    - `sourceTrust`: user_submitted=1.0, scraped:home-barista=0.85, scraped:reddit=0.7
+   - `originConf`: from `field_confidence.origin` (1.0 verified, 0.7 fuzzy, 0.5 unknown)
 5. **Take top 5**, compute confidence tier, build consensus params via weighted average (numeric) or weighted mode (categorical)
-6. **Upsert recommendation** — deterministic fingerprint (`origin-roast-method_id`) means the same params always resolve to the same record; votes accumulate across calls
+6. **Origin profile fallback** — when no community matches exist, check `origin_brew_profiles`; if a confident profile exists, use its params and set confidence = 'medium'; otherwise use method defaults (confidence = 'low') and fire-and-forget LLM profile generation
+7. **Upsert recommendation** — deterministic fingerprint (`origin-roast-method_id`) means the same params always resolve to the same record; votes accumulate across calls
 
 ### Confidence tiers
 
-| Tier | Condition | Output params |
-|------|-----------|---------------|
-| `high` | ≥3 matches, totalWeight > 1.5 | Pure weighted community consensus |
-| `medium` | 1–2 matches | 50/50 blend of community data + method defaults |
-| `low` | 0 matches | Pure method defaults |
+| Tier | Condition | Consensus source | source_attribution |
+|------|-----------|-----------------|-------------------|
+| `high` | ≥3 matches, totalWeight > 1.5 | Weighted community consensus | `"Based on N community brews"` |
+| `medium` | 1–2 matches | Blend: community data + method defaults | `"Based on N community brews"` |
+| `medium` | 0 matches, confident profile | Origin brew profile params | `"Origin profile informed this recommendation"` |
+| `low` | 0 matches, no profile | Pure method defaults | `"No community data yet — using {method} defaults"` |
+
+When community brews exist **and** a confident origin profile exists, attribution is `"Based on N community brew(s) + origin profile"` and profile tasting notes supplement any gaps in community notes.
+
+## Origin brew profiles
+
+`origin_brew_profiles` is the knowledge layer that fills the cold-start gap. Any origin × roast × method combination with no community brews gets a complete brew profile (params + technique + tasting notes) generated by Claude Haiku and stored for reuse.
+
+### Lifecycle
+
+```
+First request for unknown (origin, roast, method)
+  → computeBestBrew: topN = 0
+  → getOrTriggerOriginProfile()
+      ├─ DB hit: profile exists + confident → return it (recommendation = 'medium')
+      ├─ DB hit: needs_review → return null, don't re-trigger (cron will retry)
+      └─ DB miss → return null + fire-and-forget LLM generation
+                        └─ generateOriginBrewProfile (Haiku, temperature=0)
+                              ├─ confident: true  → upsert as llm_generated, confident=true
+                              └─ confident: false → upsert as needs_review, confident=false
+
+Weekly cron (batch-origin-profiles.ts):
+  → finds needs_review + rows older than ORIGIN_PROFILE_REFRESH_DAYS (default 7)
+  → calls generateAndUpsertProfile for each
+  → guards against overwriting confident/curated rows on LLM failure
+```
+
+### Source trust hierarchy
+
+| source | confident | How it gets there |
+|--------|-----------|-------------------|
+| `curated` | true | `bootstrap-origin-profiles.ts` — derived from real community brews in DB |
+| `llm_generated` | true | Fire-and-forget or cron; Haiku returned `{"confident": true, ...}` |
+| `needs_review` | false | Haiku returned `{"confident": false}` or call failed; cron will retry |
+
+### What it powers
+
+- **Recommendation fallback**: profile params replace method defaults when no brews match
+- **Tasting notes**: `GET /tasting-suggestions?origin=X&roast_level=Y&method_id=Z` — returns profile's comma-separated notes as a `string[]` for chip pre-population on Face B
+- **MCP `recommend` response**: `tasting_notes` array (frequency-weighted) + `tasting_notes_summary` pre-formatted string; `source_attribution` field explains the data path
 
 ## Recommendation → brew feedback loop
 
@@ -206,7 +268,7 @@ Railway project: `brew-guide` — auto-deploys from `main` on `yuens1002/brew-gu
 See `docs/roadmap.md`. Highest-priority gaps:
 1. Semantic similarity on brew notes (keyword search before committing to embeddings)
 2. Scraping pipeline — ingest roaster brew guides + community sources as seed for technique data (Phase 6)
-3. Technique Intelligence (Phase 6) — method-scoped technique fields, LLM extraction at ingest, narrative synthesis at query time
+3. Narrative synthesis — opt-in LLM-generated step-by-step brew guide (technique fields + LLM extraction ✅ delivered; synthesis still planned)
 4. Register with MCP Registry (registry.modelcontextprotocol.io) — low priority, post-competition
 
 ### Narrative synthesis — opt-in design decision
