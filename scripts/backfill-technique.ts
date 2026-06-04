@@ -23,9 +23,18 @@ async function main() {
   let updated = 0;
   let skipped = 0;
 
+  // Cheap heuristic: skip notes that are pure tasting descriptors with no technique signal
+  const TECHNIQUE_SIGNAL = /\b(bloom|pour|steep|brew|°|bar|pressure|stage|grind|preinfusion|agit|swirl|stir|inverted|yield|rinse|plunge|drawdown|preheat|second|minute|sec|min)\b/i;
+
   for (const brew of brews) {
     if (!brew.notes) continue;
     process.stdout.write(`  brew ${brew.id} (${brew.brewing_method.name})... `);
+
+    if (!TECHNIQUE_SIGNAL.test(brew.notes)) {
+      console.log('skipped (no technique signal in notes)');
+      skipped++;
+      continue;
+    }
 
     const technique = await extractTechnique(brew.brewing_method.name, brew.notes);
     if (technique) {

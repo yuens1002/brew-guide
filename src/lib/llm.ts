@@ -120,7 +120,7 @@ Rules:
 
     const parsed = JSON.parse(content) as { confident?: boolean } & Partial<OriginBrewProfilePayload>;
     if (!parsed.confident) return null;
-    if (!parsed.water_temp_c || !parsed.ratio || !parsed.brew_time_s || !parsed.grind_size) return null;
+    if (parsed.water_temp_c == null || parsed.ratio == null || parsed.brew_time_s == null || !parsed.grind_size) return null;
 
     return {
       confident: true,

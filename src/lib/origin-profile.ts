@@ -20,10 +20,25 @@ export async function getOrTriggerOriginProfile(
     return existing.confident ? existing : null;
   }
 
-  // Not found — fire-and-forget generation
+  // Not found — write a needs_review placeholder first (acts as a lock so concurrent
+  // requests see an existing row and don't trigger duplicate LLM generations), then
+  // generate and overwrite if successful.
   Promise.resolve()
-    .then(() => generateOriginBrewProfile(origin, roastLevel, methodName))
-    .then(async (payload) => {
+    .then(async () => {
+      await upsertOriginBrewProfile({
+        origin,
+        roast_level: roastLevel,
+        brewing_method_id: methodId,
+        water_temp_c: 0,
+        ratio: 0,
+        brew_time_s: 0,
+        grind_size: '',
+        tasting_notes: '',
+        technique: null,
+        source: 'needs_review',
+        confident: false,
+      });
+      const payload = await generateOriginBrewProfile(origin, roastLevel, methodName);
       if (payload) {
         await upsertOriginBrewProfile({
           origin,
@@ -38,22 +53,8 @@ export async function getOrTriggerOriginProfile(
           source: 'llm_generated',
           confident: true,
         });
-      } else {
-        // Low / no confidence — store as needs_review so cron can retry
-        await upsertOriginBrewProfile({
-          origin,
-          roast_level: roastLevel,
-          brewing_method_id: methodId,
-          water_temp_c: 0,
-          ratio: 0,
-          brew_time_s: 0,
-          grind_size: '',
-          tasting_notes: '',
-          technique: null,
-          source: 'needs_review',
-          confident: false,
-        });
       }
+      // If null, placeholder remains as needs_review — cron will retry
     })
     .catch(() => {});
 

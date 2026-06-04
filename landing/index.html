@@ -518,6 +518,7 @@
     .slide-wrapper {
       position: relative;
       min-height: 220px;
+      overflow-x: hidden;
       transition: height 0.4s ease;
     }
 
@@ -1667,7 +1668,7 @@
         if (stages.length) obj.pour_stages = stages;
         if (agi) obj.agitation = agi;
         if (dts != null) obj.drawdown_target_s = dts;
-        if (name === 'Chemex') obj.filter_rinse = boolCheck('tq_filter_rinse');
+        if (name === 'Chemex') { const fr = boolCheck('tq_filter_rinse'); if (fr) obj.filter_rinse = fr; }
       } else if (name === 'Espresso') {
         const pi = numVal('tq_preinfusion_s'), yr = numVal('tq_yield_ratio');
         const st = numVal('tq_shot_time_s'), pb = numVal('tq_pressure_bar');
@@ -1684,7 +1685,8 @@
         if (pw) obj.pre_wet = pw;
       } else if (name === 'AeroPress') {
         const invEl = document.getElementById('tq_inverted');
-        obj.inverted = invEl ? invEl.value === 'true' : false;
+        // Only include inverted when user explicitly chose Inverted; Standard (false) is the default
+        if (invEl && invEl.value === 'true') obj.inverted = true;
         const sts = numVal('tq_steep_time_s_ap'), sc = numVal('tq_stir_count'), ft = strVal('tq_filter_type_aeropress');
         if (sts != null) obj.steep_time_s = sts;
         if (sc != null) obj.stir_count = sc;
@@ -1698,7 +1700,7 @@
         const hl = strVal('tq_heat_level_moka'), ta = strVal('tq_tamp'), ph = boolCheck('tq_preheat_water');
         if (hl) obj.heat_level = hl;
         if (ta) obj.tamp = ta;
-        obj.preheat_water = ph;
+        if (ph) obj.preheat_water = ph;
       } else if (name === 'Siphon') {
         const hs = strVal('tq_heat_source'), sp = strVal('tq_stir_pattern'), dt = numVal('tq_drawdown_time_s');
         if (hs) obj.heat_source = hs;
