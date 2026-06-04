@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { getBrewingMethods, getBrews, getBrewById, addBrew, getOrigins, getBrewLinks, recordVote, getRecommendation } from '../lib/db.js';
+import { getBrewingMethods, getBrews, getBrewById, addBrew, updateBrewTechnique, getTastingNotes, getOrigins, getBrewLinks, recordVote, getRecommendation, getOriginBrewProfile } from '../lib/db.js';
 import { computeBestBrew, tryLinkBrew, resolveOrigin } from '../lib/recommend.js';
-import type { BrewingMethod, Brew } from '../types.js';
+import { extractTechnique } from '../lib/llm.js';
+import type { BrewingMethod, Brew, BrewTechnique } from '../types.js';
 
 const app = new Hono();
 
@@ -11,6 +12,36 @@ const app = new Hono();
 app.get('/origins', async (c) => {
   const origins = await getOrigins();
   return c.json(origins);
+});
+
+// GET /tasting-notes
+app.get('/tasting-notes', async (c) => {
+  const notes = await getTastingNotes();
+  return c.json(notes);
+});
+
+// GET /tasting-suggestions?origin=X&roast_level=Y&method_id=Z
+app.get('/tasting-suggestions', async (c) => {
+  const origin = c.req.query('origin');
+  if (!origin) return c.json([]);
+
+  const roastLevel = c.req.query('roast_level');
+  const methodIdRaw = c.req.query('method_id');
+  const methodId = methodIdRaw ? parseInt(methodIdRaw, 10) : NaN;
+
+  if (roastLevel && !isNaN(methodId)) {
+    const profile = await getOriginBrewProfile(origin, roastLevel, methodId);
+    if (profile?.confident && profile.tasting_notes) {
+      const notes = profile.tasting_notes
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean);
+      return c.json(notes);
+    }
+  }
+
+  const global = await getTastingNotes();
+  return c.json(global.slice(0, 20).map((n) => n.note));
 });
 
 // GET /brewing-methods
@@ -52,6 +83,7 @@ const brewSchema = z.object({
   brew_time_s: z.number(),
   rating: z.number().int().min(1).max(5),
   notes: z.string().optional(),
+  technique: z.object({}).passthrough().optional(),
   source: z.enum(['user_submitted', 'scraped:reddit', 'scraped:home-barista', 'scraped:roaster']).optional().default('user_submitted'),
   source_url: z.string().url().optional(),
   field_confidence: z.string().optional(),
@@ -80,11 +112,28 @@ app.post('/brews', zValidator('json', brewSchema), async (c) => {
     brew_time_s: data.brew_time_s,
     rating: data.rating,
     notes: data.notes,
+    technique: data.technique as BrewTechnique | undefined,
     source: data.source,
     source_url: data.source_url,
     field_confidence: fieldConfidence,
   });
   tryLinkBrew(brew).catch(() => {}); // fire-and-forget implicit feedback link
+
+  if (!data.technique && data.notes) {
+    const brewId = brew.id;
+    const methodId = data.brewing_method_id;
+    const notes = data.notes;
+    Promise.resolve()
+      .then(() => getBrewingMethods())
+      .then((methods) => {
+        const method = methods?.find((m) => m.id === methodId);
+        if (!method) return;
+        return extractTechnique(method.name, notes)
+          .then((technique) => technique && updateBrewTechnique(brewId, technique));
+      })
+      .catch(() => {});
+  }
+
   return c.json({ id: brew.id, message: 'Brew record added successfully' }, 201);
 });
 

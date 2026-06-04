@@ -50,6 +50,7 @@ model Brew {
   source               String                   @default("user_submitted")
   source_url           String?
   field_confidence     String?
+  technique            Json?
   brewing_method       BrewingMethod            @relation(fields: [brewing_method_id], references: [id])
   recommendation_links BrewRecommendationLink[]
 
@@ -78,6 +79,26 @@ model Recommendation {
   brew_links           BrewRecommendationLink[]
 
   @@map("recommendations")
+}
+
+model OriginBrewProfile {
+  id                Int       @id @default(autoincrement())
+  origin            String
+  roast_level       String
+  brewing_method_id Int
+  water_temp_c      Int
+  ratio             Float
+  brew_time_s       Int
+  grind_size        String
+  tasting_notes     String
+  technique         Json?
+  source            String    @default("llm_generated")
+  confident         Boolean   @default(false)
+  generated_at      DateTime  @default(now()) @db.Timestamptz(3)
+  last_verified     DateTime? @db.Timestamptz(3)
+
+  @@unique([origin, roast_level, brewing_method_id])
+  @@map("origin_brew_profiles")
 }
 
 model BrewRecommendationLink {

@@ -54,6 +54,7 @@ export interface Brew {
   source: BrewSource;
   source_url?: string;
   field_confidence?: string; // JSON-serialized FieldConfidence
+  technique?: BrewTechnique | null;
 }
 
 /** Parameters submitted to POST /recommend */
@@ -85,6 +86,12 @@ export interface SourceRef {
   relevance: number; // 0-1 match score
 }
 
+/** Tasting note with community count */
+export interface TastingNote {
+  note: string;
+  count: number;
+}
+
 /** AI recommendation (POST /recommend response) */
 export interface Recommendation {
   id: number;
@@ -95,8 +102,39 @@ export interface Recommendation {
   sources: SourceRef[];
   data_points_used: number;
   technique?: BrewTechnique | null;
+  tasting_notes: TastingNote[];
+  source_attribution: string;
   thumbs_up?: number;
   thumbs_down?: number;
+}
+
+/** Persisted origin brew profile (LLM-generated or curated) */
+export interface OriginBrewProfile {
+  id: number;
+  origin: string;
+  roast_level: string;
+  brewing_method_id: number;
+  water_temp_c: number;
+  ratio: number;
+  brew_time_s: number;
+  grind_size: string;
+  tasting_notes: string;        // comma-separated
+  technique: BrewTechnique | null;
+  source: 'curated' | 'llm_generated' | 'needs_review';
+  confident: boolean;
+  generated_at: string;
+  last_verified: string | null;
+}
+
+/** Payload returned by generateOriginBrewProfile (pre-persist shape) */
+export interface OriginBrewProfilePayload {
+  confident: boolean;
+  water_temp_c: number;
+  ratio: number;
+  brew_time_s: number;
+  grind_size: string;
+  tasting_notes: string[];
+  technique: BrewTechnique | null;
 }
 
 /** Stored recommendation record (prediction log) */
@@ -157,6 +195,7 @@ export interface BrewWithMethod {
   source: BrewSource;
   source_url?: string;
   field_confidence?: string; // JSON-serialized FieldConfidence; used by computeBestBrew scoring
+  technique?: BrewTechnique | null;
 }
 
 // ── Technique Types (Phase 6 — method-scoped) ──────────────

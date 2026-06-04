@@ -12,14 +12,20 @@ vi.mock('../lib/db.js', () => ({
   linkBrewToRecommendation: vi.fn(),
   getBrewLinks: vi.fn(),
   getVoteCounts: vi.fn(),
+  getOriginBrewProfile: vi.fn(),
+}));
+
+vi.mock('../lib/origin-profile.js', () => ({
+  getOrTriggerOriginProfile: vi.fn(),
 }));
 
 import mcpRoute from '../routes/mcp.js';
 import {
   getBrewingMethods, getBrews, getBrewById, addBrew,
   getOrigins, createRecommendation, findRecentRecommendation, getBrewLinks,
-  getVoteCounts,
+  getVoteCounts, getOriginBrewProfile,
 } from '../lib/db.js';
+import { getOrTriggerOriginProfile } from '../lib/origin-profile.js';
 
 const MCP_HEADERS = {
   'Content-Type': 'application/json',
@@ -90,6 +96,8 @@ beforeEach(() => {
   vi.mocked(createRecommendation).mockResolvedValue(mockRecommendationRecord);
   vi.mocked(findRecentRecommendation).mockResolvedValue(null);
   vi.mocked(getVoteCounts).mockResolvedValue({ thumbs_up: 0, thumbs_down: 0 });
+  vi.mocked(getOriginBrewProfile).mockResolvedValue(null);
+  vi.mocked(getOrTriggerOriginProfile).mockResolvedValue(null);
 });
 
 describe('MCP tools/list', () => {

@@ -57,7 +57,7 @@ Ship a stable, publicly reachable MCP endpoint.
 
 ---
 
-## Phase 6 — Technique Intelligence 🔲 Next
+## Phase 6 — Technique Intelligence ✅ Foundations done / Consensus pending
 
 Surface method-specific brew technique from community data — aggregated into consensus guidance and synthesized into narrative at query time.
 
@@ -80,35 +80,56 @@ Each brewing method has its own technique vocabulary:
 | Chemex | filter rinse, bloom, pour cadence |
 | Siphon | heat source, stir pattern, drawdown time |
 
-### Iteration 5 — Technique foundations
+### Iteration 5 — Technique foundations ✅ Done
 
 **Goal:** Per-brew technique data in the DB. LLM provider wired in.
 
-- [ ] `technique` JSONB column on `brews` — stores per-brew technique conforming to the method's schema
-- [ ] Prisma migration + type updates in `src/types.ts`
-- [ ] LLM provider setup — Anthropic SDK via `ANTHROPIC_API_KEY` env var (Railway secret); wrapper in `src/lib/llm.ts`
-- [ ] LLM extraction at ingest — when `POST /brews` or `log_brew` includes technique-rich `notes`, extract and normalise technique fields into the schema; fire-and-forget background job, non-blocking to the response
-- [ ] Backfill extraction job — one-shot script to extract technique from existing scraped brews that have notes
+- [x] `technique` JSONB column on `brews` — stores per-brew technique conforming to the method's schema
+- [x] Prisma migration + type updates in `src/types.ts`
+- [x] LLM provider setup — OpenRouter via `OPENROUTER_API_KEY` env var (Railway secret); wrapper in `src/lib/llm.ts` using `anthropic/claude-haiku-4-5`
+- [x] LLM extraction at ingest — when `POST /brews` or `log_brew` includes technique-rich `notes`, extract and normalise technique fields into the schema; fire-and-forget background job, non-blocking to the response
+- [x] Backfill extraction job — `scripts/backfill-technique.ts`: one-shot LLM-extract technique for brews with notes but no technique
+- [x] Structured technique input on Face B — per-method technique fields (pour stages +/-, bloom, pressure, steep time) rendered in landing page
+- [x] `GET /tasting-notes` — frequency-ranked tasting descriptors from community brews; powers chip suggestions
 
-**Owner**: `/backend-architect`, `/devops` (LLM env setup)
-**Branch**: `feat/iteration-5-technique-foundations`
+**Owner**: `/backend-architect`, `/devops`, `/frontend-dev`
+**Branch**: `feat/structured-technique-input` (merged)
 
 ---
 
-### Iteration 6 — Technique consensus + narrative synthesis
+### Iteration 6 — Origin brew profiles ✅ Done
 
-**Goal:** `recommend` returns community-consensus technique steps and an optional LLM-generated narrative.
+**Goal:** Fill the cold-start gap — any unknown origin × roast × method gets a complete brew profile from community data or Haiku-generated knowledge.
 
-- [ ] Technique consensus in `computeBestBrew` — aggregate technique patterns across top-scoring matched brews: weighted mode for categorical fields (`agitation`), weighted average for numeric fields (`bloom_duration_s`, `pour_stages`)
-- [ ] `technique` object in `POST /recommend` response — consensus technique or method-default fallback
-- [ ] Narrative synthesis — opt-in (`"include_narrative": true` in request body), gated on `medium`/`high` confidence; passes consensus params + technique through LLM; non-blocking to callers that don't request it
+- [x] `origin_brew_profiles` table — origin × roast_level × brewing_method_id with params, technique, tasting notes, source trust hierarchy (`curated` → `llm_generated` → `needs_review`)
+- [x] `generateOriginBrewProfile()` in `src/lib/llm.ts` — Haiku, temperature=0, method-schema-aware, `confident` gate
+- [x] `getOrTriggerOriginProfile()` + `generateAndUpsertProfile()` in `src/lib/origin-profile.ts` — fire-and-forget on first miss; guards against overwriting confident/curated rows on LLM failure
+- [x] Cold-start fallback in `computeBestBrew` — when topN=0, returns profile params at `medium` confidence instead of bare method defaults
+- [x] `source_attribution` on all recommendation responses — four-path attribution string
+- [x] `GET /tasting-suggestions` — returns profile tasting notes as `string[]` for Face B chip pre-population
+- [x] Face B chip pre-population — fetches suggestions on origin select; retriggers on method change; clears on origin clear
+- [x] `scripts/bootstrap-origin-profiles.ts` — derives curated profiles from existing community brews
+- [x] `scripts/batch-origin-profiles.ts` — cron: refreshes `needs_review` + stale rows; respects `ORIGIN_PROFILE_REFRESH_DAYS`
+
+**Owner**: `/backend-architect`, `/frontend-dev`
+**Branch**: `feat/origin-brew-profiles` (PR #10, pending merge)
+
+---
+
+### Iteration 7 — Technique consensus + narrative synthesis 🔲 Next
+
+**Goal:** `recommend` returns community-consensus technique steps and an optional LLM-generated narrative brew guide.
+
+- [ ] Technique consensus in `computeBestBrew` — aggregate technique patterns across top-scoring matched brews: weighted mode for categorical fields (`agitation`, `filter_type`), weighted average for numeric fields (`bloom_duration_s`, `bloom_weight_g`, pour stage volumes/times)
+- [ ] `technique` object in `POST /recommend` response — consensus technique or method-default fallback; `technique_confidence` indicating how many matched brews contributed technique data
+- [ ] Narrative synthesis — opt-in (`"include_narrative": true` in request body), gated on `medium`/`high` confidence; passes consensus params + technique + origin profile tasting notes through LLM; non-blocking to callers that don't request it
 - [ ] MCP `recommend` tool updated to support `include_narrative` parameter
-- [ ] Landing page renders narrative when present (replaces static technique steps)
+- [ ] Landing page Face A: render technique summary + narrative when present (collapsible section below parameters)
 - [ ] API-SPEC.md + architecture/overview.md updated
 
 **Owner**: `/backend-architect`, `/frontend-dev`
-**Branch**: `feat/iteration-6-technique-consensus-narrative`
-**Depends on**: Iteration 5 (technique on brews, LLM wired)
+**Branch**: `feat/iteration-7-technique-consensus`
+**Depends on**: Iterations 5 + 6 (technique on brews ✅, LLM wired ✅, origin profiles ✅)
 
 ---
 
@@ -157,6 +178,6 @@ More data = higher-confidence recommendations. Most queries currently return `me
 
 ---
 
-## Open question before Iteration 5
+## Resolved decisions
 
-LLM provider for extraction + narrative synthesis: **Anthropic direct** (simpler auth, same model family) vs **OpenRouter** (broader model access, single API key for multiple providers). Decision affects `devops` secrets setup and `src/lib/llm.ts` implementation.
+**LLM provider** — OpenRouter chosen (single `OPENROUTER_API_KEY` env var, `anthropic/claude-haiku-4-5` model). Simpler Railway secret management; model can be swapped without code changes. Decided during Iteration 5.

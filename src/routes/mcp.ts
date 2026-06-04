@@ -3,8 +3,9 @@ import { StreamableHTTPTransport } from '@hono/mcp';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { corsHeaders, checkOrigin } from '../lib/mcp-common.js';
-import { getBrewingMethods, getBrews, getBrewById, addBrew, getBrewLinks } from '../lib/db.js';
+import { getBrewingMethods, getBrews, getBrewById, addBrew, getBrewLinks, updateBrewTechnique } from '../lib/db.js';
 import { computeBestBrew, tryLinkBrew, resolveOrigin } from '../lib/recommend.js';
+import { extractTechnique } from '../lib/llm.js';
 import type { Brew } from '../types.js';
 
 function buildMcpServer(): McpServer {
@@ -29,7 +30,7 @@ function buildMcpServer(): McpServer {
     'recommend',
     {
       title: 'Recommend Brew Parameters',
-      description: 'Get a community-consensus brew recommendation. Returns brew parameters (temp, ratio, grind, time), confidence tier (high/medium/low based on community data), sources, and method-specific technique guidance (e.g. bloom timing, pour stages, steep time).',
+      description: 'Get a community-consensus brew recommendation. Returns brew parameters (temp, ratio, grind, time), confidence tier (high/medium/low based on community data), sources, method-specific technique guidance (e.g. bloom timing, pour stages, steep time), tasting_notes — a frequency-weighted flavor profile aggregated from community brews or the origin brew profile (sorted by count descending; lead your response with the top 3–5 as the primary cup profile), tasting_notes_summary (a pre-formatted sentence you can embed directly), and source_attribution — a human-readable string explaining the data path (e.g. "Based on 5 community brews", "Origin profile informed this recommendation", "No community data yet — using Pour Over defaults"). Surface source_attribution prominently so the user understands how confident to be.',
       inputSchema: {
         origin: z.string().optional().describe('Coffee origin (e.g. Colombia, Ethiopia)'),
         roast_level: z.string().optional().describe('Roast level (light, medium, dark)'),
@@ -42,7 +43,12 @@ function buildMcpServer(): McpServer {
       const resolvedOrigin = origin ? (await resolveOrigin(origin)).resolved : undefined;
       try {
         const result = await computeBestBrew({ origin: resolvedOrigin, roast_level, brewing_method_id, grind_size, variety });
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+        const top = result.tasting_notes.slice(0, 5);
+        const rest = result.tasting_notes.slice(5);
+        const tasting_notes_summary = top.length > 0
+          ? `Most noted: ${top.map(n => n.note).join(', ')}${rest.length > 0 ? ` · Also present: ${rest.map(n => n.note).join(', ')}` : ''}`
+          : '';
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, tasting_notes_summary }) }] };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Recommendation failed';
         return { content: [{ type: 'text' as const, text: msg }], isError: true };
@@ -67,6 +73,7 @@ function buildMcpServer(): McpServer {
         brew_time_s: z.number().describe('Brew time in seconds'),
         rating: z.number().int().min(1).max(5).describe('Rating from 1 to 5'),
         notes: z.string().optional().describe('Tasting notes or observations'),
+        technique: z.object({}).passthrough().optional().describe('Structured technique object (bypasses LLM extraction when provided)'),
         source_url: z.string().url().optional().describe('Source URL for this brew data'),
         field_confidence: z.string().optional().describe('JSON-serialized per-field confidence scores'),
       },
@@ -91,10 +98,27 @@ function buildMcpServer(): McpServer {
         brew_time_s: params.brew_time_s,
         rating: params.rating,
         notes: params.notes,
+        technique: params.technique as Brew['technique'],
         source_url: params.source_url,
         field_confidence: fieldConfidence,
       } as Omit<Brew, 'id' | 'created_at'>);
       tryLinkBrew(brew).catch(() => {}); // fire-and-forget implicit feedback link
+
+      if (!params.technique && params.notes) {
+        const brewId = brew.id;
+        const methodId = params.brewing_method_id;
+        const notes = params.notes;
+        Promise.resolve()
+          .then(() => getBrewingMethods())
+          .then((methods) => {
+            const method = methods?.find((m) => m.id === methodId);
+            if (!method) return;
+            return extractTechnique(method.name, notes)
+              .then((technique) => technique && updateBrewTechnique(brewId, technique));
+          })
+          .catch(() => {});
+      }
+
       return { content: [{ type: 'text' as const, text: JSON.stringify({ id: brew.id, message: 'Brew record added successfully' }) }] };
     },
   );

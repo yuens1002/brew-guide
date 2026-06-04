@@ -6,6 +6,8 @@ vi.mock('../lib/db.js', () => ({
   getBrews: vi.fn(),
   getBrewById: vi.fn(),
   addBrew: vi.fn(),
+  updateBrewTechnique: vi.fn(),
+  getTastingNotes: vi.fn(),
   getOrigins: vi.fn(),
   createRecommendation: vi.fn(),
   findRecentRecommendation: vi.fn(),
@@ -14,14 +16,25 @@ vi.mock('../lib/db.js', () => ({
   getVoteCounts: vi.fn(),
   getRecommendation: vi.fn(),
   recordVote: vi.fn(),
+  getOriginBrewProfile: vi.fn(),
+}));
+
+vi.mock('../lib/recommend.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/recommend.js')>();
+  return { ...actual };
+});
+
+vi.mock('../lib/llm.js', () => ({
+  extractTechnique: vi.fn().mockResolvedValue(null),
 }));
 
 import brewingRoutes from '../routes/brewing.js';
 import {
   getBrewingMethods, addBrew, getBrews, getBrewById,
-  getOrigins, createRecommendation, findRecentRecommendation, getBrewLinks,
-  getVoteCounts, getRecommendation, recordVote,
+  getTastingNotes, getOrigins, createRecommendation, findRecentRecommendation, getBrewLinks,
+  getVoteCounts, getRecommendation, recordVote, getOriginBrewProfile,
 } from '../lib/db.js';
+import { extractTechnique } from '../lib/llm.js';
 
 const mockMethods: BrewingMethod[] = [
   {
@@ -124,6 +137,7 @@ beforeEach(() => {
   vi.mocked(getVoteCounts).mockResolvedValue({ thumbs_up: 0, thumbs_down: 0 });
   vi.mocked(getRecommendation).mockResolvedValue(null);
   vi.mocked(recordVote).mockResolvedValue({ thumbs_up: 1, thumbs_down: 0 });
+  vi.mocked(getOriginBrewProfile).mockResolvedValue(null);
 });
 
 describe('GET /origins', () => {
@@ -208,6 +222,103 @@ describe('POST /brews', () => {
     });
 
     expect(res.status).toBe(400);
+  });
+
+  // AC-TST-1: technique in body — extractTechnique NOT called
+  it('does not call extractTechnique when technique is supplied in the body', async () => {
+    const technique = { bloom_weight_ratio: 2, bloom_duration_s: 30, pour_stages: [] } as import('../types.js').BrewTechnique;
+    const saved: Brew = { ...validBrewPayload, id: 1, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted', technique };
+    vi.mocked(addBrew).mockResolvedValue(saved);
+    vi.mocked(extractTechnique).mockResolvedValue(null);
+
+    await brewingRoutes.request('/brews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...validBrewPayload, technique }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(vi.mocked(extractTechnique)).not.toHaveBeenCalled();
+  });
+
+  // AC-TST-2: technique in body — addBrew called with the technique object
+  it('passes technique to addBrew when supplied in the body', async () => {
+    const technique = { bloom_weight_ratio: 2, bloom_duration_s: 30, pour_stages: [] } as import('../types.js').BrewTechnique;
+    const saved: Brew = { ...validBrewPayload, id: 1, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted', technique };
+    vi.mocked(addBrew).mockResolvedValue(saved);
+
+    await brewingRoutes.request('/brews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...validBrewPayload, technique }),
+    });
+
+    expect(vi.mocked(addBrew)).toHaveBeenCalledWith(
+      expect.objectContaining({ technique }),
+    );
+  });
+
+  // AC-TST-5: fire-and-forget extraction triggered when notes present
+  it('initiates technique extraction when notes are present', async () => {
+    const saved: Brew = { ...validBrewPayload, id: 1, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted' };
+    vi.mocked(addBrew).mockResolvedValue(saved);
+    vi.mocked(getBrewingMethods).mockResolvedValue(mockMethods);
+    vi.mocked(extractTechnique).mockResolvedValue(null);
+
+    await brewingRoutes.request('/brews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validBrewPayload), // has notes: 'Bright and clean'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0)); // flush microtask queue
+
+    expect(vi.mocked(getBrewingMethods)).toHaveBeenCalled();
+  });
+
+  // AC-TST-6: no extraction triggered when notes are absent
+  it('does not call extractTechnique when notes are absent', async () => {
+    const noNotesPayload = { ...validBrewPayload, notes: undefined };
+    const saved: Brew = { ...noNotesPayload, id: 2, created_at: '2026-05-25T00:00:00Z', source: 'user_submitted' };
+    vi.mocked(addBrew).mockResolvedValue(saved);
+    vi.mocked(extractTechnique).mockResolvedValue(null);
+
+    await brewingRoutes.request('/brews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(noNotesPayload),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(vi.mocked(extractTechnique)).not.toHaveBeenCalled();
+  });
+});
+
+// AC-TST-4: GET /tasting-notes returns {note, count} sorted descending
+describe('GET /tasting-notes', () => {
+  it('returns tasting notes sorted by count descending', async () => {
+    vi.mocked(getTastingNotes).mockResolvedValue([
+      { note: 'bright', count: 4 },
+      { note: 'floral', count: 2 },
+      { note: 'earthy', count: 1 },
+    ]);
+
+    const res = await brewingRoutes.request('/tasting-notes');
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as Array<{ note: string; count: number }>;
+    expect(Array.isArray(body)).toBe(true);
+    expect(body[0]).toEqual({ note: 'bright', count: 4 });
+    expect(body[0].count).toBeGreaterThanOrEqual(body[1].count);
+    expect(body[1].count).toBeGreaterThanOrEqual(body[2].count);
+  });
+
+  it('returns empty array when no brews have notes', async () => {
+    vi.mocked(getTastingNotes).mockResolvedValue([]);
+
+    const res = await brewingRoutes.request('/tasting-notes');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
   });
 });
 
@@ -461,5 +572,60 @@ describe('POST /recommend/:id/vote', () => {
     });
 
     expect(res.status).toBe(400);
+  });
+});
+
+// ── GET /tasting-suggestions ────────────────────────────────
+
+describe('GET /tasting-suggestions', () => {
+  // AC-TST-4: returns profile notes when confident profile exists
+  it('returns profile tasting notes when confident profile exists', async () => {
+    vi.mocked(getOriginBrewProfile).mockResolvedValue({
+      id: 1,
+      origin: 'Ethiopia',
+      roast_level: 'light',
+      brewing_method_id: 1,
+      water_temp_c: 94,
+      ratio: 0.0625,
+      brew_time_s: 210,
+      grind_size: 'medium-fine',
+      tasting_notes: 'blueberry, floral, citrus, bright, jasmine',
+      technique: null,
+      source: 'llm_generated',
+      confident: true,
+      generated_at: '2026-06-01T00:00:00Z',
+      last_verified: null,
+    });
+
+    const res = await brewingRoutes.request('/tasting-suggestions?origin=Ethiopia&roast_level=light&method_id=1');
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual(['blueberry', 'floral', 'citrus', 'bright', 'jasmine']);
+    expect(getOriginBrewProfile).toHaveBeenCalledWith('Ethiopia', 'light', 1);
+  });
+
+  // AC-FN-E2: falls back to global tasting notes when no confident profile
+  it('returns global tasting notes (top-20) when no confident profile exists', async () => {
+    vi.mocked(getOriginBrewProfile).mockResolvedValue(null);
+    vi.mocked(getTastingNotes).mockResolvedValue([
+      { note: 'caramel', count: 10 },
+      { note: 'chocolate', count: 8 },
+      { note: 'citrus', count: 5 },
+    ]);
+
+    const res = await brewingRoutes.request('/tasting-suggestions?origin=Unknown&roast_level=medium&method_id=1');
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual(['caramel', 'chocolate', 'citrus']);
+  });
+
+  // AC-FN-E3: missing origin returns empty array
+  it('returns empty array when origin param is missing', async () => {
+    const res = await brewingRoutes.request('/tasting-suggestions');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
   });
 });
