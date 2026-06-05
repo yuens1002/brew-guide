@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { getBrewingMethods, getBrews, getBrewById, addBrew, updateBrewTechnique, getTastingNotes, getOrigins, getBrewLinks, recordVote, getRecommendation, getOriginBrewProfile } from '../lib/db.js';
 import { computeBestBrew, tryLinkBrew, resolveOrigin } from '../lib/recommend.js';
-import { extractTechnique } from '../lib/llm.js';
+import { extractTechnique, generateNarrative } from '../lib/llm.js';
 import type { BrewingMethod, Brew, BrewTechnique } from '../types.js';
 
 const app = new Hono();
@@ -198,6 +198,7 @@ const recommendSchema = z.object({
   ratio: z.number().optional(),
   brew_time_s: z.number().optional(),
   variety: z.string().optional(),
+  include_narrative: z.boolean().optional(),
 });
 
 // POST /recommend/:id/vote
@@ -220,7 +221,18 @@ app.post('/recommend', zValidator('json', recommendSchema), async (c) => {
     : params.origin;
   try {
     const result = await computeBestBrew({ ...params, origin: resolvedOrigin, variety: params.variety });
-    return c.json(result);
+    let narrative: string | undefined;
+    if (params.include_narrative && result.confidence !== 'low') {
+      narrative = await generateNarrative({
+        origin: result.input.origin,
+        roastLevel: result.input.roast_level,
+        methodName: result.brewing_method,
+        params: result.input,
+        technique: result.technique ?? null,
+        tastingNotes: result.tasting_notes.slice(0, 5).map(n => n.note),
+      }) ?? undefined;
+    }
+    return c.json({ ...result, ...(narrative ? { narrative } : {}) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Recommendation failed';
     if (msg === 'Brewing method not found' || msg === 'No brewing methods available') {

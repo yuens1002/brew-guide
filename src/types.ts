@@ -67,6 +67,7 @@ export interface RecommendationParams {
   water_temp_c?: number;
   ratio?: number;
   brew_time_s?: number;
+  include_narrative?: boolean;
 }
 
 /** Brew input fields echoed back in the recommendation response */
@@ -102,8 +103,11 @@ export interface Recommendation {
   sources: SourceRef[];
   data_points_used: number;
   technique?: BrewTechnique | null;
+  technique_sources_count: number;   // 0 = method default; N = community brews contributed
   tasting_notes: TastingNote[];
+  tasting_notes_summary?: string;    // pre-formatted string (MCP responses)
   source_attribution: string;
+  narrative?: string;                // opt-in LLM step-by-step brew guide
   thumbs_up?: number;
   thumbs_down?: number;
 }

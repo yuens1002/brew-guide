@@ -147,6 +147,17 @@ export async function addBrew(
   };
 }
 
+// Noise terms that disqualify a comma-split token from being a flavor descriptor
+const TASTING_NOTE_NOISE = /\b(test|week|today|month|this|that|brew)\b/i;
+
+function isFlavorNote(raw: string): boolean {
+  const note = raw.trim().toLowerCase();
+  if (note.length < 2 || note.length > 28) return false;
+  if (note.split(/\s+/).length > 3) return false;
+  if (TASTING_NOTE_NOISE.test(note)) return false;
+  return true;
+}
+
 export async function getTastingNotes(): Promise<TastingNote[]> {
   const rows = await prisma.brew.findMany({
     where: { notes: { not: null } },
@@ -157,7 +168,7 @@ export async function getTastingNotes(): Promise<TastingNote[]> {
     if (!row.notes) continue;
     for (const raw of row.notes.split(',')) {
       const note = raw.trim().toLowerCase();
-      if (note) counts[note] = (counts[note] ?? 0) + 1;
+      if (isFlavorNote(raw) && note) counts[note] = (counts[note] ?? 0) + 1;
     }
   }
   return Object.entries(counts)

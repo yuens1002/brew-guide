@@ -5,7 +5,7 @@ import {
 } from './db.js';
 import { getOrTriggerOriginProfile } from './origin-profile.js';
 import type {
-  BrewWithMethod, Brew,
+  BrewWithMethod, Brew, BrewTechnique,
   Recommendation, RecommendationParams, SourceRef, TastingNote,
 } from '../types.js';
 
@@ -117,19 +117,93 @@ function modeField(
 
 // ── Tasting Note Aggregation ────────────────────────────
 
+const TASTING_NOTE_NOISE = /\b(test|week|today|month|this|that|brew)\b/i;
+
+function isFlavorNote(raw: string): boolean {
+  const note = raw.trim().toLowerCase();
+  if (note.length < 2 || note.length > 28) return false;
+  if (note.split(/\s+/).length > 3) return false;
+  if (TASTING_NOTE_NOISE.test(note)) return false;
+  return true;
+}
+
 function aggregateTastingNotes(brews: Array<{ brew: BrewWithMethod }>, limit: number): TastingNote[] {
   const counts: Record<string, number> = {};
   for (const { brew } of brews) {
     if (!brew.notes) continue;
     for (const raw of brew.notes.split(',')) {
       const note = raw.trim().toLowerCase();
-      if (note) counts[note] = (counts[note] ?? 0) + 1;
+      if (isFlavorNote(raw) && note) counts[note] = (counts[note] ?? 0) + 1;
     }
   }
   return Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([note, count]) => ({ note, count }));
+}
+
+// ── Technique Aggregation ───────────────────────────────
+
+/**
+ * Aggregate technique fields from the top-N matched brews.
+ * Generic field-type dispatch — no per-method hardcoding:
+ *   number  → weighted average (1 decimal)
+ *   boolean → weighted majority
+ *   array   → highest-weight source (pour_stages etc.)
+ *   string  → weighted mode
+ * Falls back to methodDefault when no brews carry technique data.
+ */
+function aggregateTechnique(
+  topN: Array<{ brew: BrewWithMethod; score: number }>,
+  methodDefault: BrewTechnique | null | undefined,
+): { technique: BrewTechnique | null; technique_sources_count: number } {
+  const withTechnique = topN.filter(({ brew }) => brew.technique != null);
+
+  if (withTechnique.length === 0)
+    return { technique: methodDefault ?? null, technique_sources_count: 0 };
+  if (withTechnique.length === 1)
+    return { technique: withTechnique[0].brew.technique!, technique_sources_count: 1 };
+
+  const merged: Record<string, unknown> = {};
+  const allKeys = new Set(
+    withTechnique.flatMap(({ brew }) => Object.keys(brew.technique as object)),
+  );
+
+  for (const key of allKeys) {
+    const entries = withTechnique
+      .filter(({ brew }) => (brew.technique as Record<string, unknown>)[key] != null)
+      .map(({ brew, score }) => ({
+        value: (brew.technique as Record<string, unknown>)[key],
+        weight: score,
+      }));
+    if (!entries.length) continue;
+
+    const sample = entries[0].value;
+    const wSum = entries.reduce((s, e) => s + e.weight, 0);
+
+    if (typeof sample === 'number') {
+      merged[key] =
+        Math.round(
+          (entries.reduce((s, e) => s + (e.value as number) * e.weight, 0) / wSum) * 10,
+        ) / 10;
+    } else if (typeof sample === 'boolean') {
+      const trueW = entries.filter(e => e.value === true).reduce((s, e) => s + e.weight, 0);
+      merged[key] = trueW / wSum >= 0.5;
+    } else if (Array.isArray(sample)) {
+      merged[key] = entries.reduce((a, b) => (a.weight >= b.weight ? a : b)).value;
+    } else {
+      const votes: Record<string, number> = {};
+      entries.forEach(({ value, weight }) => {
+        votes[value as string] = (votes[value as string] ?? 0) + weight;
+      });
+      merged[key] = Object.entries(votes).sort((a, b) => b[1] - a[1])[0][0];
+    }
+  }
+
+  return {
+    technique: merged as unknown as BrewTechnique,
+    technique_sources_count: withTechnique.length,
+  };
 }
 
 // ── Main Compute ────────────────────────────────────────
@@ -286,6 +360,11 @@ export async function computeBestBrew(
     sources: JSON.stringify(sources),
   });
 
+  const { technique, technique_sources_count } = aggregateTechnique(
+    topN,
+    method.technique ?? profile?.technique,
+  );
+
   let tasting_notes = aggregateTastingNotes(topN, 8);
 
   // Supplement tasting notes from origin profile when community brews have none
@@ -296,6 +375,13 @@ export async function computeBestBrew(
       .filter(Boolean)
       .slice(0, 8)
       .map((note) => ({ note, count: 1 }));
+  }
+
+  // When community brews exist but produced no usable tasting notes (e.g. all entries
+  // were noise like "test brew"), trigger a background profile fetch so future calls
+  // can supplement from the LLM-generated profile.
+  if (tasting_notes.length === 0 && topN.length > 0 && params.origin && params.roast_level && !hasProfile) {
+    getOrTriggerOriginProfile(params.origin, params.roast_level, method.id, method.name).catch(() => {});
   }
 
   return {
@@ -314,7 +400,8 @@ export async function computeBestBrew(
     confidence,
     sources,
     data_points_used: topN.length,
-    technique: method.technique ?? null,
+    technique,
+    technique_sources_count,
     tasting_notes,
     source_attribution,
     thumbs_up: rec.thumbs_up,

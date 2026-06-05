@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { BrewingMethod, BrewWithMethod, Origin, RecommendationRecord } from '../types.js';
+import type { BrewingMethod, BrewWithMethod, Origin, RecommendationRecord, BrewTechnique } from '../types.js';
 
 vi.mock('../lib/db.js', () => ({
   getBrewingMethods: vi.fn(),
@@ -326,5 +326,55 @@ describe('resolveOrigin — unknown input', () => {
 
     expect(result.resolved).toBe('Bali Blue Moon');
     expect(result.verified).toBe(false);
+  });
+});
+
+// ── aggregateTechnique (via computeBestBrew) ───────────────
+
+// AC-TST-1: 0 technique brews → technique_sources_count: 0, technique falls back to method default
+describe('computeBestBrew — aggregateTechnique with 0 technique brews', () => {
+  it('returns technique_sources_count: 0 and null technique when no brews have a technique field', async () => {
+    vi.mocked(getBrewingMethods).mockResolvedValue([mockMethod]); // mockMethod has no technique
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 3,
+      brews: [
+        makeBrew({ id: 1, rating: 5 }),
+        makeBrew({ id: 2, rating: 5 }),
+        makeBrew({ id: 3, rating: 5 }),
+      ],
+    });
+
+    const result = await computeBestBrew({ brewing_method_id: 1, origin: 'Colombia', roast_level: 'medium' });
+
+    expect(result.technique_sources_count).toBe(0);
+    expect(result.technique).toBeNull();
+  });
+});
+
+// AC-TST-2: 2+ technique brews → technique_sources_count: N, weighted consensus
+describe('computeBestBrew — aggregateTechnique with 2 technique brews', () => {
+  it('returns technique_sources_count: 2 and consensus technique when 2 brews have technique fields', async () => {
+    const sharedTechnique: BrewTechnique = {
+      bloom_weight_ratio: 2,
+      bloom_duration_s: 45,
+      pour_stages: [{ at_s: 0, volume_ml: 60, note: 'bloom' }],
+    };
+    vi.mocked(getBrewingMethods).mockResolvedValue([mockMethod]);
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 2,
+      brews: [
+        makeBrew({ id: 1, rating: 5, technique: sharedTechnique }),
+        makeBrew({ id: 2, rating: 4, technique: sharedTechnique }),
+      ],
+    });
+
+    const result = await computeBestBrew({ brewing_method_id: 1, origin: 'Colombia', roast_level: 'medium' });
+
+    expect(result.technique_sources_count).toBe(2);
+    expect(result.technique).not.toBeNull();
+    // Weighted average of identical values is the same value
+    const t = result.technique as { bloom_duration_s: number; bloom_weight_ratio: number };
+    expect(t.bloom_duration_s).toBe(45);
+    expect(t.bloom_weight_ratio).toBe(2);
   });
 });

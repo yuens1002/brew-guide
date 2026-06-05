@@ -19,6 +19,11 @@ vi.mock('../lib/origin-profile.js', () => ({
   getOrTriggerOriginProfile: vi.fn(),
 }));
 
+vi.mock('../lib/llm.js', () => ({
+  extractTechnique: vi.fn().mockResolvedValue(null),
+  generateNarrative: vi.fn().mockResolvedValue(null),
+}));
+
 import mcpRoute from '../routes/mcp.js';
 import {
   getBrewingMethods, getBrews, getBrewById, addBrew,
@@ -26,6 +31,7 @@ import {
   getVoteCounts, getOriginBrewProfile,
 } from '../lib/db.js';
 import { getOrTriggerOriginProfile } from '../lib/origin-profile.js';
+import { generateNarrative } from '../lib/llm.js';
 
 const MCP_HEADERS = {
   'Content-Type': 'application/json',
@@ -373,3 +379,29 @@ describe('MCP tool: compare_brew', () => {
       expect(vi.mocked(getBrewLinks)).toHaveBeenCalledWith(1);
     });
   });
+
+// AC-TST-6: MCP recommend parity — include_narrative: true + medium confidence → narrative in response
+describe('MCP tool: recommend — narrative parity', () => {
+  it('calls generateNarrative and returns narrative when include_narrative: true and confidence is medium', async () => {
+    vi.mocked(getBrewingMethods).mockResolvedValue([mockMethod]);
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 1,
+      brews: [{
+        id: 1, brewing_method_id: 1, brewing_method: 'Pour Over',
+        origin: 'Colombia', roast_level: 'medium', grind_size: 'medium-fine',
+        water_temp_c: 93, ratio: 0.0625, brew_time_s: 210, rating: 4,
+        created_at: new Date().toISOString(), source: 'user_submitted' as const,
+      }],
+    });
+    vi.mocked(generateNarrative).mockResolvedValue('Grind medium-fine. Heat to 93°C. Bloom 30s. Pour in stages.');
+
+    const data = await callMcp('tools/call', {
+      name: 'recommend',
+      arguments: { origin: 'Colombia', roast_level: 'medium', brewing_method_id: 1, include_narrative: true },
+    });
+
+    expect(vi.mocked(generateNarrative)).toHaveBeenCalled();
+    const result = JSON.parse(data.result.content![0].text);
+    expect(result.narrative).toBe('Grind medium-fine. Heat to 93°C. Bloom 30s. Pour in stages.');
+  });
+});
