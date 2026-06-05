@@ -463,6 +463,12 @@
       gap: 10px;
     }
 
+    .technique-footnote {
+      margin: 10px 0 0;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
     .step {
       display: flex;
       align-items: flex-start;
@@ -2357,6 +2363,16 @@
         });
         let num = 1;
         techList.querySelectorAll('.step-num').forEach(el => { el.textContent = num++; });
+        const srcCount = data.technique_sources_count ?? 0;
+        const footnote = techSection.querySelector('.technique-footnote') || (() => {
+          const el = document.createElement('p');
+          el.className = 'technique-footnote';
+          techSection.appendChild(el);
+          return el;
+        })();
+        footnote.textContent = srcCount > 0
+          ? `Based on ${srcCount} community brew${srcCount !== 1 ? 's' : ''}`
+          : 'Method defaults';
         techSection.style.display = '';
       } else {
         techSection.style.display = 'none';

@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { isFlavorNote } from './flavor-utils.js';
 import type {
   BrewingMethod, Brew, BrewWithMethod, BrewSource,
   Origin, RecommendationRecord, BrewRecommendationLink, BrewTechnique, TastingNote, VoteResponse,
@@ -149,17 +150,6 @@ export async function addBrew(
     field_confidence: r.field_confidence ?? undefined,
     technique: r.technique as BrewTechnique | null,
   };
-}
-
-// Noise terms that disqualify a comma-split token from being a flavor descriptor
-const TASTING_NOTE_NOISE = /\b(test|week|today|month|this|that|brew)\b/i;
-
-function isFlavorNote(raw: string): boolean {
-  const note = raw.trim().toLowerCase();
-  if (note.length < 2 || note.length > 28) return false;
-  if (note.split(/\s+/).length > 3) return false;
-  if (TASTING_NOTE_NOISE.test(note)) return false;
-  return true;
 }
 
 export async function getTastingNotes(): Promise<TastingNote[]> {

@@ -3,6 +3,7 @@ import {
   createRecommendation, findRecentRecommendation, linkBrewToRecommendation,
   getOriginBrewProfile,
 } from './db.js';
+import { isFlavorNote } from './flavor-utils.js';
 import { getOrTriggerOriginProfile } from './origin-profile.js';
 import type {
   BrewWithMethod, Brew, BrewTechnique,
@@ -116,16 +117,6 @@ function modeField(
 }
 
 // ── Tasting Note Aggregation ────────────────────────────
-
-const TASTING_NOTE_NOISE = /\b(test|week|today|month|this|that|brew)\b/i;
-
-function isFlavorNote(raw: string): boolean {
-  const note = raw.trim().toLowerCase();
-  if (note.length < 2 || note.length > 28) return false;
-  if (note.split(/\s+/).length > 3) return false;
-  if (TASTING_NOTE_NOISE.test(note)) return false;
-  return true;
-}
 
 function aggregateTastingNotes(brews: Array<{ brew: BrewWithMethod }>, limit: number): TastingNote[] {
   const counts: Record<string, number> = {};
