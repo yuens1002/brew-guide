@@ -7,6 +7,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- 2026-06-05 — feat(iteration-7): technique consensus + narrative synthesis + tasting notes + origin confidence cap
+
 - 2026-05-28 — chore: favicon, gitignore cleanup, remove competition entry from public docs
 - 2026-05-28 — fix(landing): hero copy, card spacing, and animated CTA arrows
 
