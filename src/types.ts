@@ -50,6 +50,7 @@ export interface Brew {
   brew_time_s: number;
   rating: number;
   notes?: string;
+  tasting_notes?: string;    // clean comma-separated flavor tags (preferred over parsing notes)
   created_at: string;
   source: BrewSource;
   source_url?: string;
@@ -195,6 +196,7 @@ export interface BrewWithMethod {
   brew_time_s: number;
   rating: number;
   notes?: string;
+  tasting_notes?: string;    // clean comma-separated flavor tags
   created_at: string;
   source: BrewSource;
   source_url?: string;

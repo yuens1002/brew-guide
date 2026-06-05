@@ -73,6 +73,7 @@ export async function getBrews(filters?: {
     brew_time_s: r.brew_time_s,
     rating: r.rating,
     notes: r.notes ?? undefined,
+    tasting_notes: r.tasting_notes ?? undefined,
     created_at: r.created_at.toISOString(),
     source: (r.source as BrewSource) || 'user_submitted',
     source_url: r.source_url ?? undefined,
@@ -98,6 +99,7 @@ export async function getBrewById(id: number): Promise<Brew | null> {
     brew_time_s: r.brew_time_s,
     rating: r.rating,
     notes: r.notes ?? undefined,
+    tasting_notes: r.tasting_notes ?? undefined,
     created_at: r.created_at.toISOString(),
     source: (r.source as BrewSource) || 'user_submitted',
     source_url: r.source_url ?? undefined,
@@ -121,6 +123,7 @@ export async function addBrew(
       brew_time_s: brew.brew_time_s,
       rating: brew.rating,
       notes: brew.notes ?? null,
+      tasting_notes: brew.tasting_notes ?? null,
       source: brew.source || 'user_submitted',
       source_url: brew.source_url ?? null,
       field_confidence: brew.field_confidence ?? null,
@@ -139,6 +142,7 @@ export async function addBrew(
     brew_time_s: r.brew_time_s,
     rating: r.rating,
     notes: r.notes ?? undefined,
+    tasting_notes: r.tasting_notes ?? undefined,
     created_at: r.created_at.toISOString(),
     source: (r.source as BrewSource) || 'user_submitted',
     source_url: r.source_url ?? undefined,
@@ -160,15 +164,21 @@ function isFlavorNote(raw: string): boolean {
 
 export async function getTastingNotes(): Promise<TastingNote[]> {
   const rows = await prisma.brew.findMany({
-    where: { notes: { not: null } },
-    select: { notes: true },
+    where: { OR: [{ notes: { not: null } }, { tasting_notes: { not: null } }] },
+    select: { notes: true, tasting_notes: true },
   });
   const counts: Record<string, number> = {};
   for (const row of rows) {
-    if (!row.notes) continue;
-    for (const raw of row.notes.split(',')) {
-      const note = raw.trim().toLowerCase();
-      if (isFlavorNote(raw) && note) counts[note] = (counts[note] ?? 0) + 1;
+    if (row.tasting_notes) {
+      for (const raw of row.tasting_notes.split(',')) {
+        const note = raw.trim().toLowerCase();
+        if (note) counts[note] = (counts[note] ?? 0) + 1;
+      }
+    } else if (row.notes) {
+      for (const raw of row.notes.split(',')) {
+        const note = raw.trim().toLowerCase();
+        if (isFlavorNote(raw) && note) counts[note] = (counts[note] ?? 0) + 1;
+      }
     }
   }
   return Object.entries(counts)

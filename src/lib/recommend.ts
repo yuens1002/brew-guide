@@ -130,10 +130,18 @@ function isFlavorNote(raw: string): boolean {
 function aggregateTastingNotes(brews: Array<{ brew: BrewWithMethod }>, limit: number): TastingNote[] {
   const counts: Record<string, number> = {};
   for (const { brew } of brews) {
-    if (!brew.notes) continue;
-    for (const raw of brew.notes.split(',')) {
-      const note = raw.trim().toLowerCase();
-      if (isFlavorNote(raw) && note) counts[note] = (counts[note] ?? 0) + 1;
+    if (brew.tasting_notes) {
+      // Structured field: already clean, no noise filter needed
+      for (const raw of brew.tasting_notes.split(',')) {
+        const note = raw.trim().toLowerCase();
+        if (note) counts[note] = (counts[note] ?? 0) + 1;
+      }
+    } else if (brew.notes) {
+      // Fall back to parsing free-form notes (user-submitted brews without tasting_notes)
+      for (const raw of brew.notes.split(',')) {
+        const note = raw.trim().toLowerCase();
+        if (isFlavorNote(raw) && note) counts[note] = (counts[note] ?? 0) + 1;
+      }
     }
   }
   return Object.entries(counts)
@@ -262,8 +270,14 @@ export async function computeBestBrew(
   // Single profile reference shared by the no-community branch and the attribution block below
   let resolvedProfile: import('../types.js').OriginBrewProfile | null = null;
 
+  // HIGH requires at least one brew actually matching the requested origin.
+  // Without this, method+roast alone can push unrelated origins to HIGH.
+  const hasOriginMatch = params.origin
+    ? topN.some(({ brew }) => brew.origin.toLowerCase() === params.origin!.toLowerCase())
+    : true;
+
   if (topN.length >= 3 && totalWeight > 1.5) {
-    confidence = 'high';
+    confidence = hasOriginMatch ? 'high' : 'medium';
     sources = topN.map(({ brew: b, score }) => ({ brew_id: b.id, relevance: score }));
     consensus = {
       water_temp_c: Math.round(weightedAvg(topN, 'water_temp_c', totalWeight)),
@@ -338,6 +352,9 @@ export async function computeBestBrew(
     source_attribution = 'Origin profile informed this recommendation';
   } else {
     source_attribution = `No community data yet — using ${method.name} defaults`;
+  }
+  if (params.origin && !hasOriginMatch && topN.length > 0) {
+    source_attribution += ' (origin not in our database — method/roast data only)';
   }
 
   // Build recommendation text
