@@ -37,6 +37,7 @@
       font-size: 16px;
       line-height: 1.6;
       min-height: 100vh;
+      overflow-x: hidden;
     }
 
     /* ── Layout ─────────────────────────────────────────────── */
@@ -395,6 +396,50 @@
       text-transform: uppercase;
     }
 
+    /* ── Narrative / brew guide ─────────────────────────────── */
+    .narrative-section {
+      margin-bottom: 20px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .narrative-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin-bottom: 10px;
+    }
+    .narrative-body {
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+    }
+
+    /* ── Brew guide toggle ──────────────────────────────────── */
+    .guide-toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .guide-toggle-row label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .guide-toggle-row input[type="checkbox"] {
+      accent-color: var(--amber);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+    .guide-toggle-hint {
+      font-size: 12px;
+      color: var(--text-muted, #8b7355);
+    }
+
     /* ── Technique steps ────────────────────────────────────── */
     .technique-section {
       margin-bottom: 20px;
@@ -416,6 +461,12 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+    }
+
+    .technique-footnote {
+      margin: 10px 0 0;
+      font-size: 11px;
+      color: var(--muted);
     }
 
     .step {
@@ -1153,6 +1204,12 @@
               <div class="field-error" id="methodAError"></div>
             </div>
 
+            <div class="guide-toggle-row">
+              <input type="checkbox" id="includeNarrativeA">
+              <label for="includeNarrativeA">Include brew guide</label>
+              <span class="guide-toggle-hint">— step-by-step when confidence is medium or high</span>
+            </div>
+
             <button class="btn" id="submitBtn" onclick="getRecommendation()">
               Get recommendation
             </button>
@@ -1205,6 +1262,12 @@
               <div class="technique-section" id="techniqueSection">
                 <div class="technique-title">Technique guide</div>
                 <ol class="technique-steps" id="techniqueSteps"></ol>
+              </div>
+
+              <!-- Brew guide narrative -->
+              <div class="narrative-section hidden" id="narrativeSection">
+                <div class="narrative-title">Brew guide</div>
+                <p class="narrative-body" id="narrativeBody"></p>
               </div>
 
               <!-- Data points + vote -->
@@ -2217,7 +2280,8 @@
           const body = {
             origin: cleanOrigin,
             roast_level: roast,
-            brewing_method_id: parseInt(method)
+            brewing_method_id: parseInt(method),
+            include_narrative: document.getElementById('includeNarrativeA').checked
           };
           if (variety) body.variety = variety;
 
@@ -2299,9 +2363,28 @@
         });
         let num = 1;
         techList.querySelectorAll('.step-num').forEach(el => { el.textContent = num++; });
+        const srcCount = data.technique_sources_count ?? 0;
+        const footnote = techSection.querySelector('.technique-footnote') || (() => {
+          const el = document.createElement('p');
+          el.className = 'technique-footnote';
+          techSection.appendChild(el);
+          return el;
+        })();
+        footnote.textContent = srcCount > 0
+          ? `Based on ${srcCount} community brew${srcCount !== 1 ? 's' : ''}`
+          : 'Method defaults';
         techSection.style.display = '';
       } else {
         techSection.style.display = 'none';
+      }
+
+      const narrativeSection = document.getElementById('narrativeSection');
+      const narrativeBody    = document.getElementById('narrativeBody');
+      if (data.narrative) {
+        narrativeBody.textContent = data.narrative;
+        narrativeSection.classList.remove('hidden');
+      } else {
+        narrativeSection.classList.add('hidden');
       }
 
       const dp = data.data_points_used;

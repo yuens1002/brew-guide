@@ -1,6 +1,6 @@
 {
   "name": "coffee-brew-inference-experiment",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "engines": {
     "node": ">=24.0.0"
   },

@@ -136,6 +136,72 @@ Rules:
   }
 }
 
+export async function generateNarrative(opts: {
+  origin: string;
+  roastLevel: string;
+  methodName: string;
+  params: { water_temp_c: number; ratio: number; grind_size: string; brew_time_s: number };
+  technique: BrewTechnique | null;
+  tastingNotes: string[];
+}): Promise<string | null> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
+
+  const { origin, roastLevel, methodName, params, technique, tastingNotes } = opts;
+
+  const techniqueBlock = technique
+    ? `Technique details:\n${JSON.stringify(technique, null, 2)}`
+    : 'No specific technique data available — use method best practices.';
+
+  const notesBlock = tastingNotes.length > 0
+    ? `Expected flavour notes: ${tastingNotes.join(', ')}`
+    : '';
+
+  const userPrompt = `Write a concise, practical step-by-step brew guide for the following:
+
+Coffee: ${origin} (${roastLevel} roast)
+Method: ${methodName}
+Parameters: ${params.water_temp_c}°C water, ${params.grind_size} grind, 1:${Math.round(1 / params.ratio)} ratio, ${params.brew_time_s}s total brew time
+${techniqueBlock}
+${notesBlock}
+
+Keep the guide under 160 words. Be specific and actionable — address each step a brewer needs to take from grind to cup. Do not include a title or heading.`;
+
+  try {
+    const res = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://brew-guide-production.up.railway.app',
+        'X-Title': 'brew-guide',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a specialty coffee expert. Write concise, practical brew guides grounded in the provided data. Plain prose only — no markdown, no bullet points.',
+          },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 400,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content?.trim();
+    return content || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function extractTechnique(
   methodName: string,
   notes: string,

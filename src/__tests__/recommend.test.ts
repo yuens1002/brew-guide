@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { BrewingMethod, BrewWithMethod, Origin, RecommendationRecord } from '../types.js';
+import type { BrewingMethod, BrewWithMethod, Origin, RecommendationRecord, BrewTechnique } from '../types.js';
 
 vi.mock('../lib/db.js', () => ({
   getBrewingMethods: vi.fn(),
@@ -326,5 +326,116 @@ describe('resolveOrigin — unknown input', () => {
 
     expect(result.resolved).toBe('Bali Blue Moon');
     expect(result.verified).toBe(false);
+  });
+});
+
+// ── aggregateTechnique (via computeBestBrew) ───────────────
+
+// AC-TST-1: 0 technique brews → technique_sources_count: 0, technique falls back to method default
+describe('computeBestBrew — aggregateTechnique with 0 technique brews', () => {
+  it('returns technique_sources_count: 0 and null technique when no brews have a technique field', async () => {
+    vi.mocked(getBrewingMethods).mockResolvedValue([mockMethod]); // mockMethod has no technique
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 3,
+      brews: [
+        makeBrew({ id: 1, rating: 5 }),
+        makeBrew({ id: 2, rating: 5 }),
+        makeBrew({ id: 3, rating: 5 }),
+      ],
+    });
+
+    const result = await computeBestBrew({ brewing_method_id: 1, origin: 'Colombia', roast_level: 'medium' });
+
+    expect(result.technique_sources_count).toBe(0);
+    expect(result.technique).toBeNull();
+  });
+});
+
+// AC-TST-2: 2+ technique brews → technique_sources_count: N, weighted consensus
+describe('computeBestBrew — aggregateTechnique with 2 technique brews', () => {
+  it('returns technique_sources_count: 2 and consensus technique when 2 brews have technique fields', async () => {
+    const sharedTechnique: BrewTechnique = {
+      bloom_weight_ratio: 2,
+      bloom_duration_s: 45,
+      pour_stages: [{ at_s: 0, volume_ml: 60, note: 'bloom' }],
+    };
+    vi.mocked(getBrewingMethods).mockResolvedValue([mockMethod]);
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 2,
+      brews: [
+        makeBrew({ id: 1, rating: 5, technique: sharedTechnique }),
+        makeBrew({ id: 2, rating: 4, technique: sharedTechnique }),
+      ],
+    });
+
+    const result = await computeBestBrew({ brewing_method_id: 1, origin: 'Colombia', roast_level: 'medium' });
+
+    expect(result.technique_sources_count).toBe(2);
+    expect(result.technique).not.toBeNull();
+    // Weighted average of identical values is the same value
+    const t = result.technique as { bloom_duration_s: number; bloom_weight_ratio: number };
+    expect(t.bloom_duration_s).toBe(45);
+    expect(t.bloom_weight_ratio).toBe(2);
+  });
+});
+
+// AC-NEW-1: tasting_notes field preferred over notes parsing
+describe('computeBestBrew — tasting_notes field used when present', () => {
+  it('returns clean tasting notes from brew.tasting_notes without noise-filter fallback', async () => {
+    vi.mocked(getBrewingMethods).mockResolvedValue([mockMethod]);
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 3,
+      brews: [
+        makeBrew({ id: 1, rating: 5, tasting_notes: 'caramel, apple, toffee', notes: 'Narrative — should be ignored when tasting_notes present' }),
+        makeBrew({ id: 2, rating: 5, tasting_notes: 'caramel, chocolate', notes: undefined }),
+        makeBrew({ id: 3, rating: 5, tasting_notes: 'caramel, stone fruit', notes: undefined }),
+      ],
+    });
+
+    const result = await computeBestBrew({ brewing_method_id: 1, origin: 'Colombia', roast_level: 'medium' });
+
+    const noteNames = result.tasting_notes.map(n => n.note);
+    // 'caramel' appears in all 3 brews — should be top note
+    expect(noteNames[0]).toBe('caramel');
+    // narrative text from notes field must NOT appear
+    expect(noteNames).not.toContain('narrative');
+    expect(noteNames).not.toContain('should be ignored when tasting_notes present');
+  });
+});
+
+// AC-NEW-2: confidence capped at medium when no topN brew matches the requested origin
+describe('computeBestBrew — origin mismatch caps confidence at medium', () => {
+  it('returns medium (not high) when 3+ brews match method+roast but none match the requested origin', async () => {
+    vi.mocked(getBrewingMethods).mockResolvedValue([mockMethod]);
+    // 3 Ethiopia brews that score on method+roast but not on origin (requested: Brazil)
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 3,
+      brews: [
+        makeBrew({ id: 1, origin: 'Ethiopia', rating: 5 }),
+        makeBrew({ id: 2, origin: 'Ethiopia', rating: 5 }),
+        makeBrew({ id: 3, origin: 'Ethiopia', rating: 5 }),
+      ],
+    });
+
+    const result = await computeBestBrew({ brewing_method_id: 1, origin: 'Brazil', roast_level: 'medium' });
+
+    expect(result.confidence).toBe('medium');
+    expect(result.source_attribution).toContain('origin not in our database');
+  });
+
+  it('returns high when 3+ brews match and at least one matches the requested origin', async () => {
+    vi.mocked(getBrewingMethods).mockResolvedValue([mockMethod]);
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 3,
+      brews: [
+        makeBrew({ id: 1, origin: 'Colombia', rating: 5 }),
+        makeBrew({ id: 2, origin: 'Colombia', rating: 5 }),
+        makeBrew({ id: 3, origin: 'Colombia', rating: 5 }),
+      ],
+    });
+
+    const result = await computeBestBrew({ brewing_method_id: 1, origin: 'Colombia', roast_level: 'medium' });
+
+    expect(result.confidence).toBe('high');
   });
 });

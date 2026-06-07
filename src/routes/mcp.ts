@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { corsHeaders, checkOrigin } from '../lib/mcp-common.js';
 import { getBrewingMethods, getBrews, getBrewById, addBrew, getBrewLinks, updateBrewTechnique } from '../lib/db.js';
 import { computeBestBrew, tryLinkBrew, resolveOrigin } from '../lib/recommend.js';
-import { extractTechnique } from '../lib/llm.js';
+import { extractTechnique, generateNarrative } from '../lib/llm.js';
 import type { Brew } from '../types.js';
 
 function buildMcpServer(): McpServer {
@@ -37,9 +37,10 @@ function buildMcpServer(): McpServer {
         brewing_method_id: z.number().optional().describe('Preferred brewing method ID'),
         grind_size: z.string().optional().describe('Preferred grind size'),
         variety: z.string().optional().describe('Coffee variety (e.g. heirloom, robusta, SL28)'),
+        include_narrative: z.boolean().optional().describe('Set true to include an LLM-generated step-by-step brew guide (only returned when confidence is medium or high)'),
       },
     },
-    async ({ origin, roast_level, brewing_method_id, grind_size, variety }) => {
+    async ({ origin, roast_level, brewing_method_id, grind_size, variety, include_narrative }) => {
       const resolvedOrigin = origin ? (await resolveOrigin(origin)).resolved : undefined;
       try {
         const result = await computeBestBrew({ origin: resolvedOrigin, roast_level, brewing_method_id, grind_size, variety });
@@ -48,7 +49,23 @@ function buildMcpServer(): McpServer {
         const tasting_notes_summary = top.length > 0
           ? `Most noted: ${top.map(n => n.note).join(', ')}${rest.length > 0 ? ` · Also present: ${rest.map(n => n.note).join(', ')}` : ''}`
           : '';
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ ...result, tasting_notes_summary }) }] };
+        let narrative: string | undefined;
+        if (include_narrative && result.confidence !== 'low') {
+          narrative = await generateNarrative({
+            origin: result.input.origin,
+            roastLevel: result.input.roast_level,
+            methodName: result.brewing_method,
+            params: result.input,
+            technique: result.technique ?? null,
+            tastingNotes: top.map(n => n.note),
+          }) ?? undefined;
+        }
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({ ...result, tasting_notes_summary, ...(narrative ? { narrative } : {}) }),
+          }],
+        };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Recommendation failed';
         return { content: [{ type: 'text' as const, text: msg }], isError: true };

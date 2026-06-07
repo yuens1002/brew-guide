@@ -46,6 +46,7 @@ model Brew {
   brew_time_s          Int
   rating               Int
   notes                String?
+  tasting_notes        String?
   created_at           DateTime                 @default(now()) @db.Timestamptz(3)
   source               String                   @default("user_submitted")
   source_url           String?

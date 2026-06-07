@@ -71,9 +71,14 @@ Returns a brew recommendation computed from weighted consensus over logged brew 
 {
   "brewing_method_id": 1,
   "origin": "Colombia",
-  "roast_level": "medium"
+  "roast_level": "medium",
+  "variety": "heirloom",
+  "grind_size": "medium-fine",
+  "include_narrative": true
 }
 ```
+
+All fields are optional. `include_narrative` defaults to `false`. When `true` and confidence is `medium` or `high`, the response includes an LLM-generated step-by-step brew guide. On `low` confidence, no narrative is returned even if the flag is set.
 
 **Response:**
 ```json
@@ -102,10 +107,19 @@ Returns a brew recommendation computed from weighted consensus over logged brew 
     "agitation": "swirl",
     "drawdown_target_s": 210
   },
+  "technique_sources_count": 3,
+  "tasting_notes": [{ "note": "blueberry", "count": 2 }, { "note": "floral", "count": 1 }],
+  "source_attribution": "Based on 3 community brews",
+  "narrative": "Grind your Colombia light roast to a medium-fine setting...",
   "thumbs_up": 2,
   "thumbs_down": 0
 }
 ```
+
+- `technique_sources_count`: number of community brews that contributed to the technique consensus (`0` = method default only)
+- `narrative`: only present when `include_narrative: true` and confidence is `medium` or `high`; a plain-prose step-by-step brew guide (~150 words)
+- `tasting_notes`: frequency-weighted flavor notes sorted by count descending
+- `source_attribution`: human-readable string explaining the data path
 
 `thumbs_up` and `thumbs_down` reflect community votes cast via `POST /recommend/:id/vote`. Calls with the same origin+roast+method return the same recommendation record (votes accumulate).
 

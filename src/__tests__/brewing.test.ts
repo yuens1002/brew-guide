@@ -26,6 +26,7 @@ vi.mock('../lib/recommend.js', async (importOriginal) => {
 
 vi.mock('../lib/llm.js', () => ({
   extractTechnique: vi.fn().mockResolvedValue(null),
+  generateNarrative: vi.fn().mockResolvedValue(null),
 }));
 
 import brewingRoutes from '../routes/brewing.js';
@@ -34,7 +35,7 @@ import {
   getTastingNotes, getOrigins, createRecommendation, findRecentRecommendation, getBrewLinks,
   getVoteCounts, getRecommendation, recordVote, getOriginBrewProfile,
 } from '../lib/db.js';
-import { extractTechnique } from '../lib/llm.js';
+import { extractTechnique, generateNarrative } from '../lib/llm.js';
 
 const mockMethods: BrewingMethod[] = [
   {
@@ -530,6 +531,75 @@ describe('POST /recommend', () => {
     });
 
     expect(res.status).toBe(404);
+  });
+
+  // AC-TST-3: include_narrative: true + medium confidence → generateNarrative called, narrative in response
+  it('calls generateNarrative and returns narrative when include_narrative is true and confidence is medium', async () => {
+    vi.mocked(getBrewingMethods).mockResolvedValue(mockMethods);
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 1,
+      brews: [{
+        id: 1, brewing_method_id: 1, brewing_method: 'Pour Over',
+        origin: 'Colombia', roast_level: 'medium', grind_size: 'medium-fine',
+        water_temp_c: 93, ratio: 0.0625, brew_time_s: 210, rating: 4,
+        created_at: new Date().toISOString(), source: 'user_submitted' as const,
+      }],
+    });
+    vi.mocked(generateNarrative).mockResolvedValue('Grind medium-fine. Heat to 93°C. Bloom 30s. Pour in stages.');
+
+    const res = await brewingRoutes.request('/recommend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brewing_method_id: 1, origin: 'Colombia', roast_level: 'medium', include_narrative: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(generateNarrative)).toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.narrative).toBe('Grind medium-fine. Heat to 93°C. Bloom 30s. Pour in stages.');
+  });
+
+  // AC-TST-4: include_narrative: true + low confidence → generateNarrative NOT called
+  it('does not call generateNarrative when confidence is low (no community data)', async () => {
+    vi.mocked(getBrewingMethods).mockResolvedValue(mockMethods);
+    // No brews → low confidence
+    vi.mocked(generateNarrative).mockResolvedValue('step by step guide');
+
+    const res = await brewingRoutes.request('/recommend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brewing_method_id: 1, origin: 'Colombia', roast_level: 'medium', include_narrative: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(generateNarrative)).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.narrative).toBeUndefined();
+  });
+
+  // AC-TST-5: no include_narrative flag → generateNarrative NOT called
+  it('does not call generateNarrative when include_narrative is not in the request', async () => {
+    vi.mocked(getBrewingMethods).mockResolvedValue(mockMethods);
+    vi.mocked(getBrews).mockResolvedValue({
+      count: 1,
+      brews: [{
+        id: 1, brewing_method_id: 1, brewing_method: 'Pour Over',
+        origin: 'Colombia', roast_level: 'medium', grind_size: 'medium-fine',
+        water_temp_c: 93, ratio: 0.0625, brew_time_s: 210, rating: 4,
+        created_at: new Date().toISOString(), source: 'user_submitted' as const,
+      }],
+    });
+
+    const res = await brewingRoutes.request('/recommend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brewing_method_id: 1, origin: 'Colombia', roast_level: 'medium' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(generateNarrative)).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.narrative).toBeUndefined();
   });
 });
 
