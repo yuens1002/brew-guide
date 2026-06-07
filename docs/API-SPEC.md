@@ -236,6 +236,48 @@ Compares a logged brew against what the AI would have recommended.
 
 ---
 
+## Admin MCP Endpoint
+
+`POST /admin/mcp` — protected admin tools for full CRUD operations on brews, origins, and origin brew profiles.
+
+**Auth:** `Authorization: Bearer <ADMIN_TOKEN>` (env var). Returns `401` if header is missing, wrong, or `ADMIN_TOKEN` is not set.  
+**Origin policy:** same as public MCP (localhost, *.yuens.me, no-origin allowed).  
+**Health check:** `GET /admin/health` → `{ "status": "ok" }` (unprotected).
+
+### Tools
+
+#### Brews
+
+| Tool | Key inputs | Returns |
+|------|------------|---------|
+| `create_brew` | `brewing_method_id`, `origin`, `roast_level`, `grind_size`, `water_temp_c`, `ratio`, `brew_time_s`, `rating` | `{ created: true, record }` |
+| `get_brew` | `id` | `{ found: true, record }` or `{ found: false, error }` |
+| `list_brews` | `origin?`, `method?`, `limit?` | `{ records, count }` |
+| `update_brew` | `id`, any updatable field(s) | `{ updated: true, record }` or `{ updated: false, error }` |
+| `delete_brew` | `id` | `{ deleted: true, id }` or `{ deleted: false, error }` |
+
+#### Origins
+
+| Tool | Key inputs | Returns |
+|------|------------|---------|
+| `create_origin` | `name`, `region`, `subregion?`, `variety?`, `aliases?`, `is_verified?` | `{ created: true, record }` |
+| `get_origin` | `id` | `{ found: true, record }` or `{ found: false, error }` |
+| `list_origins` | — | `{ records, count }` |
+| `update_origin` | `id`, any updatable field(s) | `{ updated: true, record }` or `{ updated: false, error }` |
+| `delete_origin` | `id` | `{ deleted: true, id }` or `{ deleted: false, error }` |
+
+#### Origin Brew Profiles
+
+| Tool | Key inputs | Returns |
+|------|------------|---------|
+| `create_origin_profile` | `origin`, `roast_level`, `brewing_method_id`, `water_temp_c`, `ratio`, `brew_time_s`, `grind_size`, `tasting_notes` | `{ created: true, record }` |
+| `get_origin_profile` | `id` | `{ found: true, record }` or `{ found: false, error }` |
+| `list_origin_profiles` | `origin?`, `roast_level?`, `brewing_method_id?`, `source?` | `{ records, count }` |
+| `update_origin_profile` | `id`, any updatable field(s) | `{ updated: true, record }` or `{ updated: false, error }` |
+| `delete_origin_profile` | `id` | `{ deleted: true, id }` or `{ deleted: false, error }` |
+
+---
+
 ## Summary of User Journeys
 
 | Journey | Endpoint(s) | Purpose |
