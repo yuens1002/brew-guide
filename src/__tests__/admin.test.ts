@@ -284,6 +284,29 @@ describe('Admin tool: create_origin', () => {
   });
 });
 
+describe('Admin tool: get_origin', () => {
+  it('found → calls getOriginById, returns { found: true, record }', async () => {
+    vi.mocked(getOriginById).mockResolvedValue(mockOrigin);
+
+    const data = await callAdminMcp('tools/call', { name: 'get_origin', arguments: { id: 10 } });
+
+    expect(vi.mocked(getOriginById)).toHaveBeenCalledWith(10);
+    const result = JSON.parse(data.result.content![0].text);
+    expect(result.found).toBe(true);
+    expect(result.record.id).toBe(10);
+  });
+
+  it('not found → returns { found: false }', async () => {
+    vi.mocked(getOriginById).mockResolvedValue(null);
+
+    const data = await callAdminMcp('tools/call', { name: 'get_origin', arguments: { id: 99999 } });
+
+    const result = JSON.parse(data.result.content![0].text);
+    expect(result.found).toBe(false);
+    expect(result.error).toBe('Not found');
+  });
+});
+
 describe('Admin tool: list_origins', () => {
   it('AC-TST-13: calls getOrigins, returns { records, count }', async () => {
     vi.mocked(getOrigins).mockResolvedValue([mockOrigin]);
@@ -355,6 +378,29 @@ describe('Admin tool: create_origin_profile', () => {
     const result = JSON.parse(data.result.content![0].text);
     expect(result.created).toBe(true);
     expect(result.record.id).toBe(5);
+  });
+});
+
+describe('Admin tool: get_origin_profile', () => {
+  it('found → calls getOriginBrewProfileById, returns { found: true, record }', async () => {
+    vi.mocked(getOriginBrewProfileById).mockResolvedValue(mockProfile);
+
+    const data = await callAdminMcp('tools/call', { name: 'get_origin_profile', arguments: { id: 5 } });
+
+    expect(vi.mocked(getOriginBrewProfileById)).toHaveBeenCalledWith(5);
+    const result = JSON.parse(data.result.content![0].text);
+    expect(result.found).toBe(true);
+    expect(result.record.id).toBe(5);
+  });
+
+  it('not found → returns { found: false }', async () => {
+    vi.mocked(getOriginBrewProfileById).mockResolvedValue(null);
+
+    const data = await callAdminMcp('tools/call', { name: 'get_origin_profile', arguments: { id: 99999 } });
+
+    const result = JSON.parse(data.result.content![0].text);
+    expect(result.found).toBe(false);
+    expect(result.error).toBe('Not found');
   });
 });
 

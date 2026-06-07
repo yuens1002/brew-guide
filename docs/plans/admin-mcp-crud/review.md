@@ -47,48 +47,21 @@ No weak or vacuously-passing tests found across the sampled ACs.
 
 ## Docs drift
 
-### 1. `CLAUDE.md` — Key files table missing `src/routes/admin.ts`
+### 1. `CLAUDE.md` — Key files table missing `src/routes/admin.ts` ✓ fixed in this PR
 
-`CLAUDE.md:18-23` lists key route files including `mcp.ts` but omits the new admin route:
+`CLAUDE.md` key files table was updated to include `src/routes/admin.ts`.
 
-```
-| `src/routes/mcp.ts` | MCP tool handlers (...) |   ← listed
-                                                         ← src/routes/admin.ts absent
-```
+### 2. `docs/architecture/overview.md` — Module map and request flow missing admin route ✓ fixed in this PR
 
-The admin route is now a first-class endpoint (auth-protected, 15 tools) and belongs in this table.
+`docs/architecture/overview.md` module map and request flow section were updated to include `admin.ts`.
 
-**Fix:** Add row to the Key files table:
-```
-| `src/routes/admin.ts` | Admin MCP tools — protected CRUD at `/admin/mcp` (bearer token auth) |
-```
-
-### 2. `docs/architecture/overview.md` — Module map and request flow missing admin route
-
-`docs/architecture/overview.md` module map lists `routes/brewing.ts` and `routes/mcp.ts` but not `routes/admin.ts`. The MCP request flow section also doesn't document the admin path.
-
-**Fix:** Add to module map:
-```
-    admin.ts            → protected admin MCP endpoint (/admin/mcp): bearer token auth, 15 CRUD tools
-```
-
-Add admin request flow block after the MCP flow:
-```
-### Admin MCP (protected)
-MCP Client → POST /admin/mcp
-  → src/routes/admin.ts: checkOrigin → adminAuth (Bearer token) → buildAdminMcpServer()
-  → tool handler: create/get/list/update/delete for brews, origins, origin_brew_profiles
-  → src/lib/db.ts (Prisma → Neon Postgres)
-```
+Both fixes are included in the `docs(admin): add admin route to architecture overview and include review report` commit on this branch.
 
 ---
 
 ## Recommendations
 
-1. **Fix `CLAUDE.md` key files table** — add `src/routes/admin.ts` row before merge.
-2. **Fix `docs/architecture/overview.md`** — add admin route to module map and request flow section before merge.
-
-Both are one-line / one-block additions. No code changes.
+None — all drift found during review was fixed before merge.
 
 ---
 

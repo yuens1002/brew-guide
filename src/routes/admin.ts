@@ -15,10 +15,10 @@ import {
 
 function adminAuth(c: Context): Response | null {
   const token = process.env.ADMIN_TOKEN;
-  if (!token) return c.json({ error: 'Admin not configured' }, 401) as unknown as Response;
+  if (!token) return c.json({ error: 'Admin not configured' }, 401, corsHeaders) as unknown as Response;
   const auth = c.req.header('Authorization');
   if (!auth || auth !== `Bearer ${token}`)
-    return c.json({ error: 'Unauthorized' }, 401) as unknown as Response;
+    return c.json({ error: 'Unauthorized' }, 401, corsHeaders) as unknown as Response;
   return null;
 }
 
@@ -234,7 +234,7 @@ function buildAdminMcpServer(): McpServer {
       origin: z.string().optional().describe('Filter by origin name'),
       roast_level: z.string().optional().describe('Filter by roast level'),
       brewing_method_id: z.number().int().optional().describe('Filter by brewing method ID'),
-      source: z.string().optional().describe('Filter by source (curated, llm_generated, needs_review)'),
+      source: z.enum(['curated', 'llm_generated', 'needs_review']).optional().describe('Filter by source'),
     },
   }, async (params) => {
     const records = await listOriginBrewProfiles(params);
@@ -283,7 +283,7 @@ adminApp.options('/*', (c) => {
 
 adminApp.get('/health', (c) => c.json({ status: 'ok' }));
 
-adminApp.all('/*', async (c) => {
+adminApp.post('/*', async (c) => {
   const originErr = checkOrigin(c);
   if (originErr) return originErr;
 
