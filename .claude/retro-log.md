@@ -378,3 +378,75 @@ Running log of session lessons and fixes applied to project skills, templates, a
 - `.claude/commands/backend-architect.md` — added principle 13: LLM-calling scripts must pre-filter inputs for signal before the API call
 
 **Prevented by:** `/backend-architect` principle 13 now requires a pre-filter heuristic on any script that maps a text field through an LLM call.
+
+---
+
+## 2026-06-06 — iteration-7 /review + Copilot PR #11
+
+**Source:** `docs/plans/iteration-7/review.md` + Copilot review on PR #11
+
+---
+
+### Lesson 23: Extract shared utility functions — never copy-paste between sibling lib/ modules
+
+**Gap:** `TASTING_NOTE_NOISE` regex and `isFlavorNote()` were copy-pasted identically into both `src/lib/db.ts` and `src/lib/recommend.ts`. If the noise-word list evolves, only one copy is likely to be updated — producing inconsistent behavior between the global `/tasting-notes` endpoint and per-recommendation note aggregation.
+
+**Root cause:** The function was written once in `db.ts` for `getTastingNotes`, then needed again in `recommend.ts` for `aggregateTastingNotes`. The copy-paste path was taken instead of extracting.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `src/lib/flavor-utils.ts` — created; exports `isFlavorNote`
+- `src/lib/db.ts` — removed local copy; imports from `flavor-utils.ts`
+- `src/lib/recommend.ts` — removed local copy; imports from `flavor-utils.ts`
+- `~/.claude/commands/backend-architect.md` — added principle: extract shared utility functions to lib/; never copy-paste between sibling modules
+
+**Prevented by:** `/backend-architect` now requires a grep of sibling modules before writing a utility function; copy-pasted utilities are flagged as a DRY violation.
+
+---
+
+### Lesson 24: Sync the Zod schema when adding a field to a request-body interface
+
+**Gap:** `tasting_notes` was added to the `Brew` TypeScript interface (documented as "POST /brews request body, stored row") but not to `brewSchema` in `src/routes/brewing.ts`. Clients could not submit the field even though the type said they could.
+
+**Root cause:** The interface change was made in one pass; the route Zod schema was not checked as part of the same change.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `src/routes/brewing.ts` — added `tasting_notes: z.string().optional()` to `brewSchema`
+- `~/.claude/commands/backend-architect.md` — added principle: sync the Zod request schema whenever a field is added to a request-body interface
+
+**Prevented by:** `/backend-architect` now requires a check of the route Zod schema whenever a field is added to an interface that documents a request body.
+
+---
+
+### Lesson 25: Verify hardcoded method IDs in seed data against SEED_METHODS order
+
+**Gap:** 10 espresso brew entries in `prisma/seed.ts` were seeded with `brewing_method_id: 3` (Aeropress). Comments said "Aeropress" but the data — ratio ~0.5, brew_time ~27s, grind fine, notes explicitly saying "espresso" — was Espresso data (`brewing_method_id: 4`). This skewed Aeropress recommendations and contaminated the technique consensus for that method.
+
+**Root cause:** The ID was hardcoded without cross-checking against the position of "Espresso" in `SEED_METHODS`. Comments labeling the block as "Aeropress" were not validated against the actual field values.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `prisma/seed.ts` — changed `brewing_method_id: 3` → `4` for 10 espresso rows; updated source URLs with `-espresso` suffix; added `deleteMany` cleanup for the mislabeled prod rows
+- `~/.claude/commands/backend-architect.md` — added principle: verify hardcoded numeric method IDs in seed data against SEED_METHODS order
+
+**Prevented by:** `/backend-architect` now requires cross-checking actual data parameters (ratio, brew_time_s, grind_size) against the named method's defaults before committing seed entries.
+
+---
+
+### Lesson 26: Source attribution fields must be rendered in UI — not just returned by API
+
+**Gap:** `technique_sources_count` was computed correctly by the engine and present in the API response, but the landing page JS never read it. The plan deliverable F explicitly required a footnote ("Based on N community brew(s)" / "Method defaults"), but it wasn't in the rendering block — the deliverable was marked done at the API level only.
+
+**Root cause:** The field was implemented as part of the backend deliverable, but the corresponding UI rendering step was not treated as required. "API returns it" and "UI shows it" were implicitly treated as separate optional tasks.
+
+**Role:** `/frontend-dev`
+
+**Fix applied to:**
+- `landing/index.html` — added `technique-footnote` paragraph rendered from `data.technique_sources_count` after technique steps are appended; added `.technique-footnote` CSS class
+- `~/.claude/commands/frontend-dev.md` — added gate F5: source attribution fields must be rendered — not just returned
+
+**Prevented by:** `/frontend-dev` gate F5 now requires a grep of the rendering block for the field name before marking a deliverable complete.

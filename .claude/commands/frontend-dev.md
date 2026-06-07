@@ -74,3 +74,11 @@ if (invEl && invEl.value === 'true') obj.inverted = true;
 ```
 
 Rule: the server infers "technique was submitted" from `Object.keys(technique).length > 0`. Every field unconditionally set to `false` defeats this check. Only include boolean fields when they carry a positive signal — either `true` or an explicit non-default choice.
+
+### 5. Source attribution fields must be rendered in the UI — not just returned by the API
+
+When an API response includes a field whose sole purpose is to label the UI with a source attribution (e.g. `technique_sources_count`, `data_points_used`, `sources`), the UI rendering of that label is part of the same deliverable as the API field. "API returns it" and "UI shows it" are not separate tasks — they are one deliverable.
+
+Before marking a deliverable done: grep the rendering block (e.g. the `if (steps && steps.length > 0)` block that renders technique steps) for the field name. If the field name is absent from the rendering JS, the deliverable is not complete.
+
+Triggered by: `technique_sources_count` was computed and returned by the API but the landing page JS never read it. The plan's footnote ("Based on N community brew(s)" / "Method defaults") was shipped without the rendering code.

@@ -154,6 +154,28 @@ Rule: any script that maps a text field through an LLM call must have a pre-filt
 
 ---
 
+### 14. Extract shared utility functions to `src/lib/` — never copy-paste between sibling modules
+
+When adding a utility function (regex, filter, classifier) to a DB layer or a recommendation/engine layer, grep `src/lib/` for an identical or near-identical copy before writing. If found, extract to a dedicated shared utility file (e.g., `src/lib/flavor-utils.ts`) and import from both sides.
+
+Triggered by: `TASTING_NOTE_NOISE` + `isFlavorNote` copy-pasted into both `db.ts` and `recommend.ts`. The global `/tasting-notes` endpoint and per-recommendation note aggregation would have diverged silently when the noise-word list evolved.
+
+Rule: one definition, imported everywhere. A grep before writing costs seconds; a silent divergence in a noise filter costs a confusing support bug.
+
+### 15. Sync the Zod schema when adding a field to a request-body interface
+
+When `tasting_notes` (or any field) is added to the `Brew` TypeScript interface — documented as "POST /brews request body, stored row" — immediately check whether `brewSchema` in `src/routes/brewing.ts` also needs the field. If the interface says clients can send it and the schema doesn't list it, the field is silently stripped by Zod.
+
+Rule: any field added to an interface that documents a request body must be added to the corresponding Zod schema in the same commit. Exception: server-only fields (e.g., `id`, `created_at`, `source` with a server default) — document those explicitly as server-populated if kept on the interface.
+
+### 16. Verify hardcoded numeric method IDs in seed data against SEED_METHODS order
+
+`brewing_method_id: 3` means Aeropress only if Aeropress is the third entry in `SEED_METHODS`. When seeding brew entries by method block, cross-check the ID against `SEED_METHODS`'s position, not against the block comment.
+
+The ground truth check: do the actual data parameters (ratio, brew_time_s, grind_size, temp) match the named method's defaults in `SEED_METHODS`? If `ratio: 0.5` and `brew_time_s: 27` and `grind_size: 'fine'` appear under `// Aeropress` but Aeropress defaults are `ratio: 0.067 / brew_time: 120s / grind: medium-fine`, the ID is wrong regardless of the comment.
+
+Triggered by: 10 espresso brews seeded with `brewing_method_id: 3` (Aeropress) — skewed Aeropress recommendations and contaminated technique consensus.
+
 ### 6. Scraper/data-migration scripts must document their contract
 
 When a standalone script writes to a database or API (e.g., `scripts/scrape-roasters.ts`), add a header comment block that documents: (1) the target database/endpoint and required env vars, (2) whether the script is idempotent, (3) how to run it against production. Scripts without this context get run against the wrong target — the header costs 5 lines and prevents a production data incident. Discovered when the scraper shipped as a 700-line script with no target environment documentation.
