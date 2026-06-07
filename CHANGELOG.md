@@ -7,6 +7,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- 2026-06-07 — feat(admin): protected MCP CRUD endpoint at /admin/mcp with 15 tools for brews, origins, and origin brew profiles
 - 2026-06-05 — feat(iteration-7): technique consensus + narrative synthesis + tasting notes + origin confidence cap
 
 - 2026-05-28 — chore: favicon, gitignore cleanup, remove competition entry from public docs
