@@ -25,6 +25,7 @@ src/
     brewing.ts          → REST routes (/origins, /brewing-methods, /brews,
                           /recommend, /tasting-notes, /tasting-suggestions)
     mcp.ts              → MCP tool handlers + Streamable HTTP transport
+    admin.ts            → protected admin MCP endpoint (/admin/mcp): bearer token auth, 15 CRUD tools
   lib/
     db.ts               → Prisma client wrapper: all DB access; mock this in tests
     recommend.ts        → recommendation engine: computeBestBrew, tryLinkBrew, resolveOrigin
@@ -59,6 +60,15 @@ MCP Client → POST /mcp
   → src/lib/recommend.ts  (for recommend and log_brew)
   → src/lib/db.ts (Prisma → Neon Postgres)
   → SSE response (event: message / data: {...})
+```
+
+### Admin MCP (protected)
+```
+MCP Client → POST /admin/mcp
+  → src/routes/admin.ts: checkOrigin → adminAuth (Bearer token) → buildAdminMcpServer()
+  → tool handler: create/get/list/update/delete for brews, origins, origin_brew_profiles
+  → src/lib/db.ts (Prisma → Neon Postgres)
+  → SSE response
 ```
 
 ## MCP tools
