@@ -7,6 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import brewingRoutes from './routes/brewing.js';
 import mcpRoutes from './routes/mcp.js';
+import adminRoutes from './routes/admin.js';
 
 const app = new Hono();
 
@@ -51,6 +52,9 @@ app.route('/', brewingRoutes);
 
 // Mount MCP server
 app.route('/mcp', mcpRoutes);
+
+// Mount admin MCP endpoint (protected — requires Authorization: Bearer <ADMIN_TOKEN>)
+app.route('/admin', adminRoutes);
 
 // Health check (no rate limit)
 app.get('/health', (c) => c.json({ status: 'ok' }));

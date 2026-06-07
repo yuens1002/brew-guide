@@ -421,3 +421,167 @@ export async function recordVote(recommendationId: number, vote: 'up' | 'down'):
   });
   return r;
 }
+
+// ── Admin CRUD ───────────────────────────────────────────
+
+function mapOrigin(r: { id: number; name: string; region: string; subregion: string | null; variety: string | null; aliases: string | null; is_verified: boolean }): Origin {
+  return {
+    id: r.id,
+    name: r.name,
+    region: r.region,
+    subregion: r.subregion ?? undefined,
+    variety: r.variety ?? undefined,
+    aliases: r.aliases ?? undefined,
+    is_verified: r.is_verified,
+  };
+}
+
+export async function getOriginById(id: number): Promise<Origin | null> {
+  const r = await prisma.origin.findUnique({ where: { id } });
+  return r ? mapOrigin(r) : null;
+}
+
+export async function createOrigin(
+  data: Pick<Origin, 'name' | 'region'> & Partial<Pick<Origin, 'subregion' | 'variety' | 'aliases' | 'is_verified'>>,
+): Promise<Origin> {
+  const r = await prisma.origin.create({
+    data: {
+      name: data.name,
+      region: data.region,
+      subregion: data.subregion ?? null,
+      variety: data.variety ?? null,
+      aliases: data.aliases ?? null,
+      is_verified: data.is_verified ?? false,
+    },
+  });
+  return mapOrigin(r);
+}
+
+export async function updateBrew(
+  id: number,
+  data: Partial<Pick<Brew, 'origin' | 'variety' | 'roast_level' | 'grind_size' | 'water_temp_c' | 'ratio' | 'brew_time_s' | 'rating' | 'notes' | 'tasting_notes'>>,
+): Promise<Brew | null> {
+  try {
+    const r = await prisma.brew.update({ where: { id }, data });
+    return {
+      id: r.id,
+      brewing_method_id: r.brewing_method_id,
+      origin: r.origin,
+      variety: r.variety ?? undefined,
+      roast_level: r.roast_level,
+      grind_size: r.grind_size,
+      water_temp_c: r.water_temp_c,
+      ratio: r.ratio,
+      brew_time_s: r.brew_time_s,
+      rating: r.rating,
+      notes: r.notes ?? undefined,
+      tasting_notes: r.tasting_notes ?? undefined,
+      created_at: r.created_at.toISOString(),
+      source: (r.source as BrewSource) || 'user_submitted',
+      source_url: r.source_url ?? undefined,
+      field_confidence: r.field_confidence ?? undefined,
+      technique: r.technique as BrewTechnique | null,
+    };
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return null;
+    throw err;
+  }
+}
+
+export async function deleteBrew(id: number): Promise<boolean> {
+  try {
+    await prisma.brew.delete({ where: { id } });
+    return true;
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return false;
+    throw err;
+  }
+}
+
+export async function updateOrigin(
+  id: number,
+  data: Partial<Pick<Origin, 'name' | 'region' | 'subregion' | 'variety' | 'aliases' | 'is_verified'>>,
+): Promise<Origin | null> {
+  try {
+    const r = await prisma.origin.update({ where: { id }, data });
+    return mapOrigin(r);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return null;
+    throw err;
+  }
+}
+
+export async function deleteOrigin(id: number): Promise<boolean> {
+  try {
+    await prisma.origin.delete({ where: { id } });
+    return true;
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return false;
+    throw err;
+  }
+}
+
+export async function getOriginBrewProfileById(id: number): Promise<OriginBrewProfile | null> {
+  const r = await prisma.originBrewProfile.findUnique({ where: { id } });
+  return r ? mapProfile(r) : null;
+}
+
+export async function listOriginBrewProfiles(filters?: {
+  origin?: string;
+  roast_level?: string;
+  brewing_method_id?: number;
+  source?: string;
+}): Promise<OriginBrewProfile[]> {
+  const where = {
+    ...(filters?.origin ? { origin: filters.origin } : {}),
+    ...(filters?.roast_level ? { roast_level: filters.roast_level } : {}),
+    ...(filters?.brewing_method_id !== undefined ? { brewing_method_id: filters.brewing_method_id } : {}),
+    ...(filters?.source ? { source: filters.source } : {}),
+  };
+  const rows = await prisma.originBrewProfile.findMany({ where, orderBy: { generated_at: 'desc' } });
+  return rows.map(mapProfile);
+}
+
+export async function createOriginBrewProfile(
+  data: Omit<OriginBrewProfile, 'id' | 'generated_at' | 'last_verified'>,
+): Promise<OriginBrewProfile> {
+  const r = await prisma.originBrewProfile.create({
+    data: {
+      origin: data.origin,
+      roast_level: data.roast_level,
+      brewing_method_id: data.brewing_method_id,
+      water_temp_c: data.water_temp_c,
+      ratio: data.ratio,
+      brew_time_s: data.brew_time_s,
+      grind_size: data.grind_size,
+      tasting_notes: data.tasting_notes,
+      technique: data.technique != null ? (data.technique as Prisma.InputJsonValue) : Prisma.JsonNull,
+      source: data.source,
+      confident: data.confident,
+    },
+  });
+  return mapProfile(r);
+}
+
+export async function updateOriginBrewProfile(
+  id: number,
+  data: Partial<Pick<OriginBrewProfile, 'water_temp_c' | 'ratio' | 'brew_time_s' | 'grind_size' | 'tasting_notes' | 'source' | 'confident'>>,
+): Promise<OriginBrewProfile | null> {
+  try {
+    const r = await prisma.originBrewProfile.update({ where: { id }, data });
+    return mapProfile(r);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return null;
+    throw err;
+  }
+}
+
+export async function deleteOriginBrewProfile(id: number): Promise<boolean> {
+  try {
+    await prisma.originBrewProfile.delete({ where: { id } });
+    return true;
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return false;
+    throw err;
+  }
+}
