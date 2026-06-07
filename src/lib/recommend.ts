@@ -156,7 +156,13 @@ function aggregateTechnique(
   topN: Array<{ brew: BrewWithMethod; score: number }>,
   methodDefault: BrewTechnique | null | undefined,
 ): { technique: BrewTechnique | null; technique_sources_count: number } {
-  const withTechnique = topN.filter(({ brew }) => brew.technique != null);
+  // Only count brews whose technique has real structured fields, not just a description string.
+  // A technique with only { description: "..." } carries no community data — it's the method default.
+  const withTechnique = topN.filter(({ brew }) => {
+    if (brew.technique == null) return false;
+    const keys = Object.keys(brew.technique as object);
+    return keys.length > 1 || (keys.length === 1 && keys[0] !== 'description');
+  });
 
   if (withTechnique.length === 0)
     return { technique: methodDefault ?? null, technique_sources_count: 0 };
@@ -373,24 +379,21 @@ export async function computeBestBrew(
     method.technique ?? profile?.technique,
   );
 
-  let tasting_notes = aggregateTastingNotes(topN, 8);
-
-  // Supplement tasting notes from origin profile when community brews have none
-  if (tasting_notes.length === 0 && hasProfile && profile?.tasting_notes) {
-    tasting_notes = profile.tasting_notes
-      .split(',')
-      .map((n) => n.trim().toLowerCase())
-      .filter(Boolean)
-      .slice(0, 8)
-      .map((note) => ({ note, count: 1 }));
+  // Tasting notes are origin+roast-scoped, not method-specific.
+  // Query all community brews for this origin+roast regardless of method.
+  let tasting_notes: TastingNote[] = [];
+  if (params.origin && params.roast_level) {
+    const { brews: crossMethodBrews } = await getBrews({
+      origin: params.origin,
+      roast_level: params.roast_level,
+      limit: 50,
+    });
+    tasting_notes = aggregateTastingNotes(
+      crossMethodBrews.map((b) => ({ brew: b })),
+      8,
+    );
   }
-
-  // When community brews exist but produced no usable tasting notes (e.g. all entries
-  // were noise like "test brew"), trigger a background profile fetch so future calls
-  // can supplement from the LLM-generated profile.
-  if (tasting_notes.length === 0 && topN.length > 0 && params.origin && params.roast_level && !hasProfile) {
-    getOrTriggerOriginProfile(params.origin, params.roast_level, method.id, method.name).catch(() => {});
-  }
+  // No LLM fallback — notes are community-data-driven only.
 
   return {
     id: rec.id,

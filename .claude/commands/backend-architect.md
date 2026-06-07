@@ -176,6 +176,73 @@ The ground truth check: do the actual data parameters (ratio, brew_time_s, grind
 
 Triggered by: 10 espresso brews seeded with `brewing_method_id: 3` (Aeropress) — skewed Aeropress recommendations and contaminated technique consensus.
 
+### 17. New route files must be registered in CLAUDE.md and the architecture overview in the same commit
+
+When adding `src/routes/{name}.ts`, update two developer-on-ramp files in the same commit:
+1. `CLAUDE.md` key files table — add a row describing the route's purpose
+2. `docs/architecture/overview.md` module map — add a line under `routes/`; add a request flow block if the route has a distinct auth or transport pattern
+
+Treat this as a D-deliverable (same weight as mounting the route in `index.ts`). A route that isn't listed in these files is invisible to the next engineer.
+
+Triggered by: `src/routes/admin.ts` shipped and mounted before CLAUDE.md and `docs/architecture/overview.md` were updated — caught by `/review` as docs drift.
+
+---
+
+### 18. Auth middleware that short-circuits must include corsHeaders on failure responses
+
+When `adminAuth` (or any auth guard) returns early with a 4xx response, apply `corsHeaders` to the response:
+
+```typescript
+return c.json({ error: 'Unauthorized' }, 401, corsHeaders);
+```
+
+Without corsHeaders on the failure response, browser-based MCP clients receive a CORS error (opaque failure) instead of the intended 401. The auth failure is invisible to the client and impossible to debug.
+
+Rule: any `return c.json({ error: ... }, 4xx)` in an auth middleware must include `corsHeaders` as the third argument.
+
+Triggered by: Copilot review on `admin-mcp-crud` — `adminAuth` returned 401 without corsHeaders, would have caused CORS failures in browser MCP clients.
+
+---
+
+### 19. Use method-specific handlers for protected endpoints — never `all('/*')`
+
+When mounting a protected MCP endpoint that only accepts POST, register `app.post('/*')` not `app.all('/*')`:
+
+```typescript
+// ✗ accepts GET, PUT, DELETE, PATCH — unintended surface area
+adminApp.all('/*', async (c) => { ... });
+
+// ✓ matches the documented API contract
+adminApp.post('/*', async (c) => { ... });
+```
+
+Rule: if the endpoint's API spec says `POST /admin/mcp`, the handler must be `post`, not `all`. Reducing accepted methods to those actually used prevents unintended method handling and matches the spec precisely.
+
+Triggered by: Copilot review on `admin-mcp-crud`.
+
+---
+
+### 20. Zod enum constraints must be consistent across all tools that share a field
+
+When multiple MCP tools (create, update, list) operate on the same field with a constrained value set, all must use the same `z.enum([...])`. Using `z.string()` on the list tool while create/update use `z.enum()` allows typo values that silently produce empty results:
+
+Anti-pattern:
+```typescript
+// create_origin_profile and update_origin_profile use z.enum — but:
+source: z.string().optional()  // list_origin_profiles: accepts any string, typo → empty results
+```
+
+Correct pattern:
+```typescript
+source: z.enum(['curated', 'llm_generated', 'needs_review']).optional()
+```
+
+Rule: derive the enum list from create's required input; apply the same enum to every update/list tool that filters or sets the same field. Consistency prevents silent failures and makes tool schemas self-documenting.
+
+Triggered by: Copilot review on `admin-mcp-crud` — `list_origin_profiles` used `z.string()` for `source`.
+
+---
+
 ### 6. Scraper/data-migration scripts must document their contract
 
 When a standalone script writes to a database or API (e.g., `scripts/scrape-roasters.ts`), add a header comment block that documents: (1) the target database/endpoint and required env vars, (2) whether the script is idempotent, (3) how to run it against production. Scripts without this context get run against the wrong target — the header costs 5 lines and prevents a production data incident. Discovered when the scraper shipped as a 700-line script with no target environment documentation.

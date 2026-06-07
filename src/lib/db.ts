@@ -43,11 +43,13 @@ export async function getBrewingMethods(): Promise<BrewingMethod[]> {
 
 export async function getBrews(filters?: {
   origin?: string;
+  roast_level?: string;
   method?: number;
   limit?: number;
 }): Promise<{ count: number; brews: BrewWithMethod[] }> {
   const where = {
     ...(filters?.origin ? { origin: filters.origin } : {}),
+    ...(filters?.roast_level ? { roast_level: filters.roast_level } : {}),
     ...(filters?.method !== undefined ? { brewing_method_id: filters.method } : {}),
   };
 

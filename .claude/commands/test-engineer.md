@@ -79,6 +79,30 @@ Without this, an MCP handler can silently skip the fire-and-forget (a separate c
 
 Discovered: `mcp.ts` `log_brew` had no `extractTechnique` fire-and-forget while `brewing.ts` `POST /brews` did. No test caught the omission because MCP tests only asserted the response body.
 
+### 7. Get-by-ID tools require both found and not-found test coverage
+
+When a tool or endpoint does a lookup by ID (e.g. `get_brew`, `get_origin`, `get_origin_profile`), write two tests — not one:
+
+1. **Found path** — mock the DB function to return a record; assert `found: true` and `record.id` in the response
+2. **Not-found path** — mock the DB function to return `null`; assert `found: false` and `error: 'Not found'`
+
+Anti-pattern (single test, happy path only):
+```typescript
+it('get_brew → found', ...) // only this
+```
+
+Correct pattern (both branches):
+```typescript
+it('found → calls getBrewById, returns { found: true, record }', ...)
+it('not found → returns { found: false }', ...)
+```
+
+Rule: a get-by-ID handler has exactly two branches — found and not-found. Both must be tested. Coverage gaps here mean silent regressions in the guard path go undetected. Apply this rule during AC authoring (AC-TST for each get tool should have two rows), not during review.
+
+Triggered by: Copilot review on `admin-mcp-crud` — `get_origin` and `get_origin_profile` had no test coverage at all; only caught post-implementation.
+
+---
+
 ### 5. MCP-path tests must mirror REST-path coverage
 
 When a feature adds a handler to both a REST route and an MCP tool that share the same underlying DB call, the MCP-path test must cover the same happy-path cases as the REST test — not just the fallback. The two handlers are wired separately; a coverage gap in the MCP path allows silent regressions in the wiring without any test failure. Enforce parity during AC authoring, not during review. Discovered when `compare_brew` MCP was tested for the 0.5 fallback but not the 0.82 live-link case that the REST test covered.

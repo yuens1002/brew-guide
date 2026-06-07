@@ -208,7 +208,7 @@ describe('computeBestBrew — profile fallback (topN = 0)', () => {
     expect(result.source_attribution).toContain('using Pour Over defaults');
   });
 
-  it('populates tasting_notes from profile when topN brews have no notes', async () => {
+  it('returns empty tasting_notes when no community brews have notes (no LLM fallback)', async () => {
     vi.mocked(getBrewingMethods).mockResolvedValue([mockMethod]);
     vi.mocked(getBrews).mockResolvedValue({ count: 0, brews: [] });
     vi.mocked(getOrTriggerOriginProfile).mockResolvedValue(mockProfile);
@@ -220,7 +220,8 @@ describe('computeBestBrew — profile fallback (topN = 0)', () => {
       roast_level: 'light',
     });
 
-    expect(result.tasting_notes.length).toBeGreaterThan(0);
-    expect(result.tasting_notes[0].note).toBe('blueberry');
+    // Tasting notes are community-data-driven only — no LLM profile fallback.
+    // When no community brews have notes, the result has an empty tasting_notes array.
+    expect(result.tasting_notes).toEqual([]);
   });
 });

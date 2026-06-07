@@ -569,7 +569,7 @@
     .slide-wrapper {
       position: relative;
       min-height: 220px;
-      overflow-x: hidden;
+      overflow: hidden;
       transition: height 0.4s ease;
     }
 
@@ -2353,7 +2353,8 @@
       const techList    = document.getElementById('techniqueSteps');
       techList.innerHTML = '';
       const methodDesc = (window._methodMap && Object.values(window._methodMap).find(m => m.name === methodName) || {}).description;
-      const steps = renderTechniqueOrFallback(data.technique, methodName, methodDesc);
+      const structuredSteps = renderTechnique(data.technique, methodName);
+      const steps = structuredSteps || (data.technique && methodDesc ? [methodDesc] : null);
       if (steps && steps.length > 0) {
         steps.forEach(s => {
           const li = document.createElement('li');
@@ -2370,7 +2371,7 @@
           techSection.appendChild(el);
           return el;
         })();
-        footnote.textContent = srcCount > 0
+        footnote.textContent = (structuredSteps && srcCount > 0)
           ? `Based on ${srcCount} community brew${srcCount !== 1 ? 's' : ''}`
           : 'Method defaults';
         techSection.style.display = '';

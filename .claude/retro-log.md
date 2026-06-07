@@ -450,3 +450,95 @@ Running log of session lessons and fixes applied to project skills, templates, a
 - `~/.claude/commands/frontend-dev.md` — added gate F5: source attribution fields must be rendered — not just returned
 
 **Prevented by:** `/frontend-dev` gate F5 now requires a grep of the rendering block for the field name before marking a deliverable complete.
+
+---
+
+## 2026-06-07 — admin-mcp-crud: /review + Copilot review on PR
+
+**Source:** `docs/plans/admin-mcp-crud/review.md` + Copilot review on PR (admin MCP CRUD route)
+
+---
+
+### Lesson 27: New route files must be registered in CLAUDE.md and architecture overview in the same commit
+
+**Gap:** `src/routes/admin.ts` was implemented and mounted in `index.ts` without updating CLAUDE.md's key files table or `docs/architecture/overview.md`. Both files still showed no admin route after the PR shipped — caught by `/review` docs drift scan.
+
+**Root cause:** Docs updates were treated as lower-priority than code. No deliverable explicitly required the docs update as D-level work in the same commit.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `CLAUDE.md` — added `src/routes/admin.ts` row to key files table
+- `docs/architecture/overview.md` — added admin route to module map + admin MCP request flow block
+- `.claude/commands/backend-architect.md` — added principle 17: new route files require CLAUDE.md + overview.md update in same commit
+- `~/.claude/commands/backend-architect.md` — same principle added globally
+
+**Prevented by:** `/backend-architect` principle 17 now treats the docs update as a D-deliverable (same weight as mounting the route in `index.ts`).
+
+---
+
+### Lesson 28: Auth middleware that short-circuits must include corsHeaders on failure responses
+
+**Gap:** `adminAuth` in `src/routes/admin.ts` returned 401 without `corsHeaders` as the third argument to `c.json(...)`. Browser-based MCP clients would receive a CORS error (opaque failure) instead of the intended 401 — making auth failures invisible and impossible to debug.
+
+**Root cause:** Auth middleware failure paths were written as simple `c.json({ error }, 401)` without consulting the project's corsHeaders convention.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `src/routes/admin.ts` — added `corsHeaders` as third arg to all `c.json(...)` auth failure responses
+- `.claude/commands/backend-architect.md` — added principle 18: auth middleware failure responses must include corsHeaders
+- `~/.claude/commands/backend-architect.md` — same principle added globally
+
+**Prevented by:** `/backend-architect` principle 18 now requires `corsHeaders` on every `return c.json({ error }, 4xx)` in an auth middleware.
+
+---
+
+### Lesson 29: Protected endpoints must use method-specific handlers, not `all('/*')`
+
+**Gap:** `adminApp.all('/*', ...)` accepted all HTTP methods (GET, PUT, DELETE, PATCH, OPTIONS) on the protected admin endpoint. The spec says POST only.
+
+**Root cause:** `all('/*')` was used as a convenient catch-all without considering that it widens the accepted method surface beyond the documented API contract.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `src/routes/admin.ts` — changed `adminApp.all('/*')` to `adminApp.post('/*')`
+- `.claude/commands/backend-architect.md` — added principle 19: use method-specific handlers for protected endpoints
+- `~/.claude/commands/backend-architect.md` — same principle added globally
+
+**Prevented by:** `/backend-architect` principle 19 now requires matching the handler method to the spec (`post` not `all` for POST-only endpoints).
+
+---
+
+### Lesson 30: Zod enum constraints must be consistent across all tools that share a field
+
+**Gap:** `create_origin_profile` and `update_origin_profile` used `z.enum(['curated', 'llm_generated', 'needs_review'])` for the `source` field. `list_origin_profiles` used `z.string().optional()` — allowing typo values that would silently produce empty results.
+
+**Root cause:** The list tool's `source` filter was written in a separate pass from the create/update tools, without checking that the same field already had an enum constraint.
+
+**Role:** `/backend-architect`
+
+**Fix applied to:**
+- `src/routes/admin.ts` — changed `list_origin_profiles` source to `z.enum(['curated', 'llm_generated', 'needs_review']).optional()`
+- `.claude/commands/backend-architect.md` — added principle 20: Zod enum constraints must be consistent across all tools that share a field
+- `~/.claude/commands/backend-architect.md` — same principle added globally
+
+**Prevented by:** `/backend-architect` principle 20 now requires deriving the enum from the create tool and applying it to all update/list tools that filter or set the same field.
+
+---
+
+### Lesson 31: Get-by-ID tools require both found and not-found test coverage
+
+**Gap:** `get_origin` and `get_origin_profile` tools in `admin.test.ts` had no tests at all — only the happy-path create/list/update/delete tests were written. The not-found guard path was entirely unverified.
+
+**Root cause:** The get-by-ID tools were treated as simple lookups requiring only one test (found path). The guard branch was not seen as a separate test case during authoring.
+
+**Role:** `/test-engineer`
+
+**Fix applied to:**
+- `src/__tests__/admin.test.ts` — added found + not-found tests for both `get_origin` and `get_origin_profile` (4 new tests)
+- `.claude/commands/test-engineer.md` — added principle 7: get-by-ID tools require both found and not-found test coverage
+- `~/.claude/commands/test-engineer.md` — added "Get-by-ID coverage rule" section globally
+
+**Prevented by:** `/test-engineer` principle 7 now requires two AC-TST rows per get-by-ID tool during AC authoring, not during code review.

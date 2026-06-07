@@ -72,6 +72,14 @@ export async function generateOriginBrewProfile(
 
   const grindSizes = 'extra-fine | fine | fine-medium | medium-fine | medium | medium-coarse | coarse';
 
+  const roastFlavorGuidance: Record<string, string> = {
+    light: 'fruit, floral, bright acidity, delicate sweetness — origin character dominates',
+    medium: 'caramel, milk chocolate, balanced acidity, moderate sweetness — roast and origin balanced',
+    'medium-dark': 'dark chocolate, toasted nut, low acidity, mild bitterness — roast flavors dominate',
+    dark: 'dark chocolate, bitter, smoky, bold body, minimal acidity — roast flavor overwhelms origin character',
+  };
+  const flavorHint = roastFlavorGuidance[roastLevel] ?? 'descriptors appropriate to the roast level';
+
   const userPrompt = `You are a specialty coffee expert. Generate a complete brew profile for:
 - Origin: ${origin}
 - Roast: ${roastLevel}
@@ -89,7 +97,7 @@ Return JSON with this exact shape (no extra keys, no markdown):
 }
 
 Rules:
-- tasting_notes: 4-6 flavor descriptors typical for this origin and roast (e.g. "blueberry", "floral", "bright")
+- tasting_notes: 4-6 flavor descriptors specific to this origin AND roast level. For ${roastLevel} roast: ${flavorHint}. Do NOT use light-roast descriptors (bright, floral, jasmine) for medium-dark or dark roast.
 - technique: fill with realistic values matching the schema shape above
 - If you have low confidence about this specific origin/roast/method, return exactly: {"confident": false}`;
 
